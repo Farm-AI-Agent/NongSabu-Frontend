@@ -64,6 +64,10 @@ const cities = {
 
 const selectedProvince = ref('')
 const selectedCity = ref('')
+const showLocationModal = ref(false)
+const prevProvince = ref('')
+const prevCity = ref('')
+const prevLocation = ref('')
 
 const farmInfo = computed(() => [
   { label: '농장명', value: userProfile.value.farmName },
@@ -96,6 +100,27 @@ function startEdit() {
   const [province, city] = userProfile.value.location.split(' ')
   selectedProvince.value = province
   selectedCity.value = city
+}
+
+function openLocationModal() {
+  // 저장용으로 현재 상태 백업 (취소 시 복원)
+  prevProvince.value = selectedProvince.value || userProfile.value.location.split(' ')[0] || ''
+  prevCity.value = selectedCity.value || userProfile.value.location.split(' ')[1] || ''
+  prevLocation.value = userProfile.value.location
+  showLocationModal.value = true
+}
+
+function closeLocationModal() {
+  // 취소: 선택값과 프로필 표시를 이전 상태로 복원
+  selectedProvince.value = prevProvince.value
+  selectedCity.value = prevCity.value
+  userProfile.value.location = prevLocation.value
+  showLocationModal.value = false
+}
+
+function confirmLocationFromModal() {
+  userProfile.value.location = `${selectedProvince.value} ${selectedCity.value}`
+  showLocationModal.value = false
 }
 
 // 프로필 편집 취소
@@ -241,37 +266,16 @@ onMounted(() => {
             />
           </div>
 
-          <!-- 지역 선택 -->
+          <!-- 지역 선택 (모달로 변경) -->
           <div>
             <label class="block text-sm font-medium text-gray-900 mb-3">지역</label>
-            <div class="grid grid-cols-3 gap-2 mb-3">
+            <div class="flex items-center justify-between mb-3">
+              <div class="text-sm text-gray-700">{{ selectedProvince && selectedCity ? `${selectedProvince} ${selectedCity}` : userProfile.location }}</div>
               <button
-                v-for="province in provinces"
-                :key="province"
-                @click="selectedProvince = province; selectedCity = cities[province]?.[0] || ''"
-                class="py-2.5 px-3 rounded-lg text-sm font-medium transition-colors"
-                :class="
-                  selectedProvince === province
-                    ? 'bg-brand text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                "
+                @click="openLocationModal"
+                class="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
               >
-                {{ province }}
-              </button>
-            </div>
-            <div class="grid grid-cols-2 gap-2">
-              <button
-                v-for="city in cities[selectedProvince] || []"
-                :key="city"
-                @click="selectedCity = city"
-                class="py-2.5 px-3 rounded-lg text-sm font-medium transition-colors"
-                :class="
-                  selectedCity === city
-                    ? 'bg-brand text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                "
-              >
-                {{ city }}
+                지역 변경
               </button>
             </div>
           </div>
@@ -285,6 +289,71 @@ onMounted(() => {
               placeholder="농장명을 입력하세요"
               class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand"
             />
+          </div>
+          <!-- Location modal for profile edit -->
+          <div
+            v-if="showLocationModal"
+            class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+            @click.self="closeLocationModal"
+          >
+            <div class="bg-white rounded-2xl w-full max-w-sm mx-4 max-h-[80vh] flex flex-col">
+              <h2 class="text-lg font-bold text-gray-900 mb-5 p-6 pb-3 sticky top-0 bg-white rounded-t-2xl">지역 설정</h2>
+
+              <div class="overflow-y-auto flex-1 px-6">
+                <div class="mb-5">
+                  <label class="text-sm font-medium text-gray-900 block mb-3">도 선택</label>
+                  <div class="grid grid-cols-3 gap-2">
+                    <button
+                      v-for="province in provinces"
+                      :key="province"
+                      @click="selectedProvince = province; selectedCity = cities[province]?.[0] || ''"
+                      class="py-2.5 px-3 rounded-lg text-sm font-medium transition-colors"
+                      :class="
+                        selectedProvince === province
+                          ? 'bg-brand text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      "
+                    >
+                      {{ province }}
+                    </button>
+                  </div>
+                </div>
+
+                <div class="mb-6">
+                  <label class="text-sm font-medium text-gray-900 block mb-3">시/군 선택</label>
+                  <div class="grid grid-cols-2 gap-2">
+                    <button
+                      v-for="city in cities[selectedProvince] || []"
+                      :key="city"
+                      @click="selectedCity = city"
+                      class="py-2.5 px-3 rounded-lg text-sm font-medium transition-colors"
+                      :class="
+                        selectedCity === city
+                          ? 'bg-brand text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      "
+                    >
+                      {{ city }}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="flex gap-3 p-6 pt-3 border-t border-gray-200 sticky bottom-0 bg-white rounded-b-2xl">
+                <button
+                  @click="closeLocationModal"
+                  class="flex-1 py-3 px-4 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  취소
+                </button>
+                <button
+                  @click="confirmLocationFromModal"
+                  class="flex-1 py-3 px-4 bg-brand text-white rounded-lg text-sm font-medium hover:bg-opacity-90"
+                >
+                  확인
+                </button>
+              </div>
+            </div>
           </div>
 
           <!-- 재배 작물 -->
