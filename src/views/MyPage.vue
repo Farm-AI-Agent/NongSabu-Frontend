@@ -359,7 +359,7 @@ onMounted(() => {
           <!-- 재배 작물 -->
           <div>
             <label class="block text-sm font-medium text-gray-900 mb-3">재배 작물</label>
-            <div class="grid grid-cols-5 gap-3 max-h-[280px] overflow-y-auto">
+            <div class="grid grid-cols-5 gap-3">
               <button
                 v-for="crop in crops"
                 :key="crop.id"

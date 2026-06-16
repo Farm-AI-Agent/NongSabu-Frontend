@@ -274,7 +274,7 @@ const diagnosisData = [
 
               <!-- 작물 선택 그리드 -->
               <div class="mb-6">
-                <div class="grid grid-cols-5 gap-3 max-h-[280px] overflow-y-auto">
+                <div class="grid grid-cols-5 gap-3">
                   <button
                     v-for="crop in crops"
                     :key="crop.id"
