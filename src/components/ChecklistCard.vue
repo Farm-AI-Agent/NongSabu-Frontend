@@ -111,10 +111,16 @@ function closeEditModal() {
 // 1️⃣1️⃣ 항목을 삭제하는 함수
 // 왜? 사용자가 더 이상 필요 없는 할 일을 제거할 수 있게
 function deleteItem(i) {
-  if (confirm('정말 삭제하시겠습니까?')) {
-    checklist.value.splice(i, 1) // splice: 배열에서 i번째 위치의 1개 항목 제거
-    saveChecklist()
-  }
+  // accept raw index number or a ref returned from template
+  const idx = typeof i === 'number' ? i : (i && i.value != null ? i.value : null)
+  if (idx == null) return false
+
+  // single confirmation here; callers can rely on returned boolean
+  if (!confirm('정말 삭제하시겠습니까?')) return false
+
+  checklist.value.splice(idx, 1)
+  saveChecklist()
+  return true
 }
 
 // 1️⃣2️⃣ localStorage에 현재 할 일 목록을 저장하는 함수
@@ -297,7 +303,7 @@ onMounted(() => {
 
         <div class="flex gap-3 p-6 pt-0">
           <button
-            @click="() => { if (confirm('정말 삭제하시겠습니까?')) { deleteItem(editingIndex); closeEditModal() } }"
+            @click="() => { if (deleteItem(editingIndex)) closeEditModal() }"
             class="flex-1 py-2.5 px-4 border border-red-300 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
           >
             삭제
