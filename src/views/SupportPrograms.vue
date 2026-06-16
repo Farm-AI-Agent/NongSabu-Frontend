@@ -129,8 +129,34 @@ const filteredPrograms = computed(() => {
   })
 })
 
+function loadFavorites() {
+  try {
+    return JSON.parse(localStorage.getItem('fd_fav_programs') || '[]')
+  } catch (e) {
+    return []
+  }
+}
+
+function saveFavorites(list) {
+  localStorage.setItem('fd_fav_programs', JSON.stringify(list))
+}
+
+// initialize liked flags from storage
+const savedFavs = loadFavorites()
+supportPrograms.value.forEach(p => {
+  p.liked = savedFavs.some(f => f.id === p.id)
+})
+
 function toggleLike(program) {
   program.liked = !program.liked
+  let favs = loadFavorites()
+  if (program.liked) {
+    // add full program object (avoid duplicates)
+    if (!favs.some(f => f.id === program.id)) favs.push(program)
+  } else {
+    favs = favs.filter(f => f.id !== program.id)
+  }
+  saveFavorites(favs)
 }
 
 function openDetail(program) {

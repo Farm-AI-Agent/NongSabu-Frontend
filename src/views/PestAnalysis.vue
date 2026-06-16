@@ -107,9 +107,47 @@ function resetToUpload() {
 }
 
 // 8️⃣ 진단 요청 함수
-// 왜? 사용자가 "AI 영상진단 요청" 버튼을 클릭했을 때 진단 결과 화면으로 전환하기 위해
+// 왜? 사용자가 "AI 영상진단 요청" 버튼을 클릭했을 때 진단 결과 화면으로 전환하고
+//   진단 결과를 로컬에 저장해서 진단 이력에서 확인할 수 있게 함
+function loadDiagnosisHistory() {
+  try {
+    return JSON.parse(localStorage.getItem('fd_diagnosis_history') || '[]')
+  } catch (e) {
+    return []
+  }
+}
+
+function saveDiagnosisHistory(list) {
+  localStorage.setItem('fd_diagnosis_history', JSON.stringify(list))
+}
+
+function addDiagnosisRecord(record) {
+  const hist = loadDiagnosisHistory()
+  hist.unshift(record) // newest first
+  saveDiagnosisHistory(hist)
+}
+
 function requestDiagnosis() {
   showDiagnosisResult.value = true
+
+  // create a simple diagnosis record and persist it
+  const record = {
+    id: Date.now(),
+    date: new Date().toISOString(),
+    diagnosisType: diagnosisType.value,
+    selectedCrop: selectedCrop.value || null,
+    // store image data URL if present
+    image: uploadedImage.value || null,
+    // snapshot of diagnosisData and selected tab
+    diagnosisData: diagnosisData.map(d => ({ name: d.name, percentage: d.percentage })),
+    selectedDiseaseTab: selectedDiseaseTab.value
+  }
+
+  try {
+    addDiagnosisRecord(record)
+  } catch (e) {
+    console.error('진단 이력 저장 실패', e)
+  }
 }
 
 // 9️⃣ 진단 결과 탭 관리

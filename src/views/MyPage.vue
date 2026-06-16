@@ -181,6 +181,18 @@ function onLogout() {
   router.push('/')
 }
 
+function handleMenuClick(item) {
+  if (item === '관심 지원사업') {
+    router.push('/favorites')
+    return
+  }
+  if (item === '진단 이력') {
+    router.push('/diagnosis-history')
+    return
+  }
+  // other items can be implemented later
+}
+
 onMounted(() => {
   loadProfile()
 })
@@ -417,6 +429,7 @@ onMounted(() => {
             :key="item"
             class="flex justify-between items-center px-6 py-4 cursor-pointer"
             :class="i > 0 ? 'border-t border-gray-100' : ''"
+            @click="handleMenuClick(item)"
           >
             <div class="text-sm text-gray-900">{{ item }}</div>
             <div class="text-base text-slate-300">›</div>
