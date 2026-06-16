@@ -163,11 +163,7 @@ const diagnosisData = [
               <span>본 진단결과는 참고용입니다. 오진의 가능성이 있으므로, 정확한 방제 처방은 전문가의 추가 검토가 필요합니다.</span>
             </div>
           </div>
-          <button
-            class="flex-shrink-0 px-3.5 py-2 bg-white border border-gray-300 rounded-md text-xs text-gray-600"
-          >
-            이용안내
-          </button>
+          
         </div>
 
         <!-- Radio -->
@@ -383,11 +379,11 @@ const diagnosisData = [
                 v-for="(data, idx) in diagnosisData"
                 :key="idx"
                 @click="selectedDiseaseTab = idx"
-                class="px-5 py-2 rounded-full font-medium text-sm transition-colors"
+                class="px-6 py-3 rounded-lg font-semibold text-sm transition-all border"
                 :class="
                   selectedDiseaseTab === idx
-                    ? 'bg-brand text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    ? 'bg-brand text-white border-brand shadow-sm'
+                    : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300'
                 "
               >
                 {{ data.name }}
