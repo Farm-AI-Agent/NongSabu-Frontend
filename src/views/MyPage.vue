@@ -1,197 +1,303 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppHeader from '../components/AppHeader.vue'
+import { ApiError, apiRequest } from '../lib/api'
 import { useAuth } from '../composables/useAuth'
+import { useFarmProfileState } from '../composables/useFarmProfileState'
 
-const router = useRouter()
-const { userName, logout } = useAuth()
-
-// 프로필 편집 모드 상태
-const isEditMode = ref(false)
-
-// 사용자 프로필 정보
-const userProfile = ref({
-  name: '',
-  email: '',
-  location: '',
-  farmName: '',
-  selectedCrops: [],
-  farmSizeNumber: '',
-  joinDate: '2025년 3월 12일'
-})
-
-// 작물 목록
-const crops = [
-  { id: 1, name: '감', emoji: '🍊' },
-  { id: 2, name: '감귤', emoji: '🍊' },
-  { id: 3, name: '감자', emoji: '🥔' },
-  { id: 4, name: '고구마', emoji: '🍠' },
-  { id: 5, name: '고추', emoji: '🌶️' },
-  { id: 6, name: '단고추', emoji: '🫑' },
-  { id: 7, name: '딸기', emoji: '🍓' },
-  { id: 8, name: '포도', emoji: '🍇' },
-  { id: 9, name: '땅콩', emoji: '🥜' },
-  { id: 10, name: '마늘', emoji: '🧄' },
-  { id: 11, name: '배', emoji: '🍐' },
-  { id: 12, name: '배추', emoji: '🥬' },
-  { id: 13, name: '복숭아', emoji: '🍑' },
-  { id: 14, name: '수박', emoji: '🍉' },
-  { id: 15, name: '쌀', emoji: '🌾' },
+const EXPERIENCE_OPTIONS = [
+  { value: 'BEGINNER', label: 'Beginner farmer' },
+  { value: 'INTERMEDIATE', label: 'Experienced farmer' },
+  { value: 'ADVANCED', label: 'Advanced farmer' },
 ]
 
-// 지역 선택 데이터
-const provinces = ['서울', '인천', '경기', '강원', '충북', '충남', '전북', '전남', '경북', '경남', '부산', '대구', '대전', '광주', '울산', '세종', '제주']
-const cities = {
-  '서울': ['종로구', '중구', '용산구', '성동구', '광진구', '동대문구', '중랑구', '성북구', '강북구', '도봉구', '노원구', '은평구', '서대문구', '마포구', '양천구', '강서구', '구로구', '금천구', '영등포구', '동작구', '관악구', '서초구', '강남구', '송파구', '강동구'],
-  '인천': ['중구', '동구', '미추홀구', '연수구', '남동구', '부평구', '계양구', '서구', '강화군', '옹진군'],
-  '경기': ['수원', '용인', '성남', '안양', '고양', '부천', '화성', '평택', '안산', '시흥', '광명', '군포', '의왕', '하남', '오산', '이천', '안성', '김포', '파주', '양주', '의정부', '포천', '동두천', '구리', '남양주', '광주', '여주'],
-  '강원': ['춘천', '강릉', '원주', '동해', '태백', '속초', '삼척', '홍천', '횡성', '평창', '정선'],
-  '충북': ['청주', '충주', '제천', '음성', '진천', '옥천', '영동', '괴산', '증평'],
-  '충남': ['천안', '아산', '서산', '당진', '공주', '보령', '논산', '계룡', '홍성', '예산', '부여', '서천', '태안', '금산'],
-  '전북': ['전주', '군산', '익산', '정읍', '김제', '남원', '완주', '고창', '부안', '순창', '임실', '진안', '무주', '장수'],
-  '전남': ['목포', '여수', '순천', '광양', '나주', '담양', '곡성', '구례', '고흥', '보성', '화순', '장흥', '강진', '해남', '영암', '무안', '함평', '영광', '장성', '완도', '진도', '신안'],
-  '경북': ['포항', '구미', '경주', '안동', '김천', '영주', '영천', '상주', '문경', '경산', '의성', '청송', '영덕', '울진', '예천'],
-  '경남': ['창원', '진주', '통영', '김해', '양산', '거제', '사천', '밀양', '함안', '창녕', '고성', '남해', '하동', '산청', '함양', '거창'],
-  '부산': ['중구', '서구', '동구', '영도구', '부산진구', '동래구', '남구', '북구', '해운대구', '사하구', '금정구', '강서구', '연제구', '수영구', '사상구', '기장군'],
-  '대구': ['중구', '동구', '서구', '남구', '북구', '수성구', '달서구', '달성군', '군위군'],
-  '대전': ['동구', '중구', '서구', '유성구', '대덕구'],
-  '광주': ['동구', '서구', '남구', '북구', '광산구'],
-  '울산': ['중구', '남구', '동구', '북구', '울주군'],
-  '세종': ['세종시'],
-  '제주': ['제주시', '서귀포시']
-}
+const router = useRouter()
+const { accessToken, fetchMyProfile, logout } = useAuth()
+const { setFarmLocation, clearFarmLocation } = useFarmProfileState()
 
-const selectedProvince = ref('')
-const selectedCity = ref('')
-const showLocationModal = ref(false)
-const prevProvince = ref('')
-const prevCity = ref('')
-const prevLocation = ref('')
+const isEditMode = ref(false)
+const isLoading = ref(true)
+const isSaving = ref(false)
+const errorMessage = ref('')
+const successMessage = ref('')
+
+const crops = ref([])
+const persistedUserCrops = ref([])
+
+const profile = reactive({
+  name: '',
+  email: '',
+  region: '',
+  farmName: '',
+  farmSize: '',
+  experienceLevel: 'BEGINNER',
+  selectedCropIds: [],
+  mainCropId: null,
+  joinDate: '',
+})
+
+const selectedCropNames = computed(() => {
+  if (!profile.selectedCropIds.length) {
+    return 'No crops selected'
+  }
+
+  return profile.selectedCropIds
+    .map((cropId) => crops.value.find((item) => item.id === cropId)?.name)
+    .filter(Boolean)
+    .join(', ')
+})
+
+const experienceLabel = computed(
+  () => EXPERIENCE_OPTIONS.find((option) => option.value === profile.experienceLevel)?.label || 'Not set',
+)
 
 const farmInfo = computed(() => [
-  { label: '농장명', value: userProfile.value.farmName },
-  { label: '재배 작물', value: formatCrops() },
-  { label: '농장 규모', value: formatFarmSize() },
-  { label: '가입일', value: userProfile.value.joinDate },
+  { label: 'Farm name', value: profile.farmName || 'Not set' },
+  { label: 'Region', value: profile.region || 'Not set' },
+  { label: 'Main crops', value: selectedCropNames.value },
+  { label: 'Experience', value: experienceLabel.value },
+  { label: 'Farm size', value: profile.farmSize || 'Not set' },
+  { label: 'Joined', value: profile.joinDate || 'Not set' },
 ])
 
-const menuItems = ['알림 설정', '진단 이력', '관심 지원사업', '고객센터 · 문의', '이용약관 및 정책']
-
-// 작물 이름 포맷팅
-function formatCrops() {
-  if (userProfile.value.selectedCrops.length === 0) return '미설정'
-  return userProfile.value.selectedCrops
-    .map(id => crops.find(c => c.id === id)?.name)
-    .join(' · ')
+function getToken() {
+  if (!accessToken.value) {
+    throw new ApiError('Authentication token is missing.')
+  }
+  return accessToken.value
 }
 
-// 농장 규모 포맷팅 (숫자 -> "시설 660㎡ (200평)" 형식)
-function formatFarmSize() {
-  if (!userProfile.value.farmSizeNumber) return '미설정'
-  const sqm = parseInt(userProfile.value.farmSizeNumber)
-  const pyeong = Math.round(sqm / 3.3)
-  return `시설 ${sqm}㎡ (${pyeong}평)`
+function resetMessages() {
+  errorMessage.value = ''
+  successMessage.value = ''
 }
 
-// 프로필 편집 모드 시작
+function formatDate(value) {
+  if (!value) {
+    return ''
+  }
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return ''
+  }
+
+  return new Intl.DateTimeFormat('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  }).format(date)
+}
+
+async function requestOrNull(path, options) {
+  try {
+    return await apiRequest(path, options)
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      return null
+    }
+    throw error
+  }
+}
+
+function applyLoadedData({ member, farm, farmProfile, userCrops: userCropList, cropList }) {
+  crops.value = cropList
+  persistedUserCrops.value = userCropList
+
+  const selectedCropIds = userCropList.length
+    ? userCropList.map((item) => item.cropId)
+    : farmProfile?.mainCropId
+      ? [farmProfile.mainCropId]
+      : []
+
+  profile.name = member.name
+  profile.email = member.email
+  profile.region = farmProfile?.region || farm?.location || ''
+  profile.farmName = farm?.name || ''
+  profile.farmSize = farmProfile?.farmSize || farm?.cultivationArea || ''
+  profile.experienceLevel = farmProfile?.experienceLevel || 'BEGINNER'
+  profile.selectedCropIds = selectedCropIds
+  profile.mainCropId = farmProfile?.mainCropId || selectedCropIds[0] || null
+  profile.joinDate = formatDate(member.createdAt)
+
+  setFarmLocation(profile.region)
+}
+
+async function loadProfile() {
+  resetMessages()
+  isLoading.value = true
+
+  try {
+    const token = getToken()
+    const member = await fetchMyProfile(token)
+    const [farm, farmProfile, userCropList, cropList] = await Promise.all([
+      requestOrNull('/api/v1/farms/me', { token }),
+      requestOrNull('/api/v1/farm-profiles/me', { token }),
+      apiRequest('/api/v1/user-crops/me', { token }),
+      apiRequest('/api/v1/crops', { token }),
+    ])
+
+    applyLoadedData({ member, farm, farmProfile, userCrops: userCropList, cropList })
+  } catch (error) {
+    errorMessage.value = error?.message || 'Failed to load farm profile.'
+  } finally {
+    isLoading.value = false
+  }
+}
+
 function startEdit() {
+  resetMessages()
   isEditMode.value = true
-  const [province, city] = userProfile.value.location.split(' ')
-  selectedProvince.value = province
-  selectedCity.value = city
 }
 
-function openLocationModal() {
-  // 저장용으로 현재 상태 백업 (취소 시 복원)
-  prevProvince.value = selectedProvince.value || userProfile.value.location.split(' ')[0] || ''
-  prevCity.value = selectedCity.value || userProfile.value.location.split(' ')[1] || ''
-  prevLocation.value = userProfile.value.location
-  showLocationModal.value = true
+async function syncUserCrops(token) {
+  const currentByCropId = new Map(persistedUserCrops.value.map((item) => [item.cropId, item]))
+  const selectedCropSet = new Set(profile.selectedCropIds)
+
+  const deleteTargets = persistedUserCrops.value.filter((item) => !selectedCropSet.has(item.cropId))
+  const createTargets = profile.selectedCropIds.filter((cropId) => !currentByCropId.has(cropId))
+
+  await Promise.all(
+    deleteTargets.map((item) =>
+      apiRequest(`/api/v1/user-crops/${item.id}`, {
+        method: 'DELETE',
+        token,
+      }),
+    ),
+  )
+
+  for (const cropId of createTargets) {
+    await apiRequest('/api/v1/user-crops', {
+      method: 'POST',
+      token,
+      body: {
+        cropId,
+        cultivationArea: profile.farmSize,
+        memo: '',
+      },
+    })
+  }
 }
 
-function closeLocationModal() {
-  // 취소: 선택값과 프로필 표시를 이전 상태로 복원
-  selectedProvince.value = prevProvince.value
-  selectedCity.value = prevCity.value
-  userProfile.value.location = prevLocation.value
-  showLocationModal.value = false
+async function saveProfile() {
+  resetMessages()
+
+  if (!profile.region.trim()) {
+    errorMessage.value = 'Enter a region.'
+    return
+  }
+
+  if (!profile.farmName.trim()) {
+    errorMessage.value = 'Enter a farm name.'
+    return
+  }
+
+  if (!profile.farmSize.trim()) {
+    errorMessage.value = 'Enter a farm size.'
+    return
+  }
+
+  if (!profile.selectedCropIds.length) {
+    errorMessage.value = 'Select at least one crop.'
+    return
+  }
+
+  if (!profile.mainCropId || !profile.selectedCropIds.includes(profile.mainCropId)) {
+    profile.mainCropId = profile.selectedCropIds[0]
+  }
+
+  isSaving.value = true
+
+  try {
+    const token = getToken()
+
+    await apiRequest('/api/v1/farms/me', {
+      method: 'PUT',
+      token,
+      body: {
+        name: profile.farmName,
+        location: profile.region,
+        cultivationArea: profile.farmSize,
+        notes: '',
+      },
+    })
+
+    const farmProfilePayload = {
+      region: profile.region,
+      experienceLevel: profile.experienceLevel,
+      farmSize: profile.farmSize,
+      mainCropId: profile.mainCropId,
+    }
+
+    try {
+      await apiRequest('/api/v1/farm-profiles/me', {
+        method: 'PUT',
+        token,
+        body: farmProfilePayload,
+      })
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.status !== 404) {
+        throw error
+      }
+
+      await apiRequest('/api/v1/farm-profiles/me', {
+        method: 'POST',
+        token,
+        body: farmProfilePayload,
+      })
+    }
+
+    await syncUserCrops(token)
+    await loadProfile()
+
+    isEditMode.value = false
+    successMessage.value = 'Farm profile saved.'
+  } catch (error) {
+    errorMessage.value = error?.message || 'Failed to save farm profile.'
+  } finally {
+    isSaving.value = false
+  }
 }
 
-function confirmLocationFromModal() {
-  userProfile.value.location = `${selectedProvince.value} ${selectedCity.value}`
-  showLocationModal.value = false
-}
-
-// 프로필 편집 취소
 function cancelEdit() {
   isEditMode.value = false
   loadProfile()
 }
 
-// localStorage에서 프로필 로드
-function loadProfile() {
-  const saved = localStorage.getItem('fd_profile')
-  if (saved) {
-    try {
-      userProfile.value = JSON.parse(saved)
-    } catch (e) {
-      console.error('프로필 로드 실패:', e)
-      setDefaultProfile()
-    }
-  } else {
-    setDefaultProfile()
-  }
-}
-
-// 기본 프로필 설정
-function setDefaultProfile() {
-  const location = localStorage.getItem('fd_location') || '전북 김제'
-  userProfile.value = {
-    name: userName.value,
-    email: 'farmer.jung@example.com',
-    location: location,
-    farmName: '혜영 농원',
-    selectedCrops: [12, 7, 5],
-    farmSizeNumber: '660',
-    joinDate: '2025년 3월 12일'
-  }
-}
-
-// 프로필 저장
-function saveProfile() {
-  userProfile.value.location = `${selectedProvince.value} ${selectedCity.value}`
-  localStorage.setItem('fd_profile', JSON.stringify(userProfile.value))
-  localStorage.setItem('fd_location', userProfile.value.location)
-  isEditMode.value = false
-}
-
-// 작물 선택 토글
 function toggleCrop(cropId) {
-  const idx = userProfile.value.selectedCrops.indexOf(cropId)
-  if (idx > -1) {
-    userProfile.value.selectedCrops.splice(idx, 1)
-  } else {
-    userProfile.value.selectedCrops.push(cropId)
+  if (profile.selectedCropIds.includes(cropId)) {
+    profile.selectedCropIds = profile.selectedCropIds.filter((id) => id !== cropId)
+    if (profile.mainCropId === cropId) {
+      profile.mainCropId = profile.selectedCropIds[0] || null
+    }
+    return
+  }
+
+  profile.selectedCropIds = [...profile.selectedCropIds, cropId]
+  if (!profile.mainCropId) {
+    profile.mainCropId = cropId
   }
 }
 
 function onLogout() {
+  clearFarmLocation()
   logout()
   router.push('/')
 }
 
 function handleMenuClick(item) {
-  if (item === '관심 지원사업') {
+  if (item === 'Favorite programs') {
     router.push('/favorites')
     return
   }
-  if (item === '진단 이력') {
+
+  if (item === 'Diagnosis history') {
     router.push('/diagnosis-history')
-    return
   }
-  // other items can be implemented later
 }
+
+const menuItems = ['Notification settings', 'Diagnosis history', 'Favorite programs', 'Support and contact', 'Terms and policies']
 
 onMounted(() => {
   loadProfile()
@@ -204,245 +310,199 @@ onMounted(() => {
     <AppHeader />
 
     <div class="px-5 py-7 max-w-shell mx-auto" style="max-width: 760px">
-      <!-- 프로필 보기 모드 -->
-      <template v-if="!isEditMode">
-        <div class="mb-6">
-          <div class="text-[26px] font-bold text-gray-900 tracking-tight">마이페이지</div>
-        </div>
+      <div v-if="isLoading" class="bg-white border border-gray-200 rounded-xl p-7 text-sm text-gray-500">
+        Loading farm profile...
+      </div>
 
-        <!-- Profile -->
-        <div
-          class="bg-white border border-gray-200 rounded-xl p-7 mb-5 flex items-center gap-5 flex-wrap"
-        >
-          <div
-            class="w-[72px] h-[72px] bg-brand-light border border-brand-border rounded-full text-brand flex items-center justify-center font-bold text-[28px] flex-shrink-0"
-          >
-            {{ userProfile.name.charAt(0) }}
-          </div>
-          <div class="flex-1 min-w-[180px]">
-            <div class="text-xl font-bold text-gray-900 mb-1">{{ userProfile.name }} 님</div>
-            <div class="text-[13px] text-gray-400">{{ userProfile.email }} · 📍 {{ userProfile.location }}</div>
-          </div>
-          <button
-            @click="startEdit"
-            class="px-[1.1rem] py-2.5 bg-white border border-gray-300 rounded-lg text-[13px] text-gray-600 hover:bg-gray-50 transition-colors"
-          >
-            프로필 수정
-          </button>
-        </div>
-
-        <!-- Farm info -->
-        <div class="bg-white border border-gray-200 rounded-xl p-[1.25rem_1.5rem] mb-5">
-          <div class="text-[15px] font-bold text-gray-900 mb-[1.1rem] flex items-center gap-2">
-            <div class="w-1 h-4 bg-brand rounded-sm"></div>
-            내 농장 정보
-          </div>
-          <div
-            v-for="(row, i) in farmInfo"
-            :key="row.label"
-            class="flex justify-between py-3"
-            :class="i > 0 ? 'border-t border-gray-100' : ''"
-          >
-            <div class="text-sm text-gray-500">{{ row.label }}</div>
-            <div class="text-sm text-gray-900 font-medium">{{ row.value }}</div>
-          </div>
-        </div>
-      </template>
-
-      <!-- 프로필 편집 모드 -->
       <template v-else>
         <div class="mb-6">
-          <div class="text-[26px] font-bold text-gray-900 tracking-tight">프로필 수정</div>
+          <div class="text-[26px] font-bold text-gray-900 tracking-tight">
+            {{ isEditMode ? 'Edit farm profile' : 'My page' }}
+          </div>
         </div>
 
-        <div class="bg-white border border-gray-200 rounded-xl p-7 space-y-6">
-          <!-- 이름 -->
-          <div>
-            <label class="block text-sm font-medium text-gray-900 mb-2">이름</label>
-            <input
-              :value="userProfile.name"
-              type="text"
-              disabled
-              class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm bg-gray-50 text-gray-600 cursor-not-allowed"
-            />
+        <div v-if="errorMessage" class="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+          {{ errorMessage }}
+        </div>
+
+        <div v-if="successMessage" class="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+          {{ successMessage }}
+        </div>
+
+        <template v-if="!isEditMode">
+          <div class="bg-white border border-gray-200 rounded-xl p-7 mb-5 flex items-center gap-5 flex-wrap">
+            <div class="w-[72px] h-[72px] bg-brand-light border border-brand-border rounded-full text-brand flex items-center justify-center font-bold text-[28px] flex-shrink-0">
+              {{ profile.name.charAt(0) }}
+            </div>
+            <div class="flex-1 min-w-[180px]">
+              <div class="text-xl font-bold text-gray-900 mb-1">{{ profile.name }}</div>
+              <div class="text-[13px] text-gray-400">{{ profile.email }} · {{ profile.region || 'Region not set' }}</div>
+            </div>
+            <button
+              @click="startEdit"
+              class="px-[1.1rem] py-2.5 bg-white border border-gray-300 rounded-lg text-[13px] text-gray-600 hover:bg-gray-50 transition-colors"
+            >
+              Edit profile
+            </button>
           </div>
 
-          <!-- 이메일 -->
-          <div>
-            <label class="block text-sm font-medium text-gray-900 mb-2">이메일</label>
-            <input
-              v-model="userProfile.email"
-              type="email"
-              placeholder="이메일을 입력하세요"
-              class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-            />
+          <div class="bg-white border border-gray-200 rounded-xl p-[1.25rem_1.5rem] mb-5">
+            <div class="text-[15px] font-bold text-gray-900 mb-[1.1rem] flex items-center gap-2">
+              <div class="w-1 h-4 bg-brand rounded-sm"></div>
+              Farm information
+            </div>
+            <div
+              v-for="(row, i) in farmInfo"
+              :key="row.label"
+              class="flex justify-between py-3 gap-6"
+              :class="i > 0 ? 'border-t border-gray-100' : ''"
+            >
+              <div class="text-sm text-gray-500">{{ row.label }}</div>
+              <div class="text-sm text-gray-900 font-medium text-right">{{ row.value }}</div>
+            </div>
           </div>
+        </template>
 
-          <!-- 지역 선택 (모달로 변경) -->
-          <div>
-            <label class="block text-sm font-medium text-gray-900 mb-3">지역</label>
-            <div class="flex items-center justify-between mb-3">
-              <div class="text-sm text-gray-700">{{ selectedProvince && selectedCity ? `${selectedProvince} ${selectedCity}` : userProfile.location }}</div>
-              <button
-                @click="openLocationModal"
-                class="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
+        <template v-else>
+          <div class="bg-white border border-gray-200 rounded-xl p-7 space-y-6">
+            <div>
+              <label class="block text-sm font-medium text-gray-900 mb-2">Name</label>
+              <input
+                :value="profile.name"
+                type="text"
+                disabled
+                class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm bg-gray-50 text-gray-600 cursor-not-allowed"
+              />
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-900 mb-2">Email</label>
+              <input
+                :value="profile.email"
+                type="email"
+                disabled
+                class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm bg-gray-50 text-gray-600 cursor-not-allowed"
+              />
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-900 mb-2">Farm name</label>
+              <input
+                v-model="profile.farmName"
+                type="text"
+                placeholder="Enter farm name"
+                class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+              />
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-900 mb-2">Region</label>
+              <input
+                v-model="profile.region"
+                type="text"
+                placeholder="Example: Jeonbuk Gimje"
+                class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+              />
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-900 mb-2">Experience</label>
+              <select
+                v-model="profile.experienceLevel"
+                class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand"
               >
-                지역 변경
+                <option v-for="option in EXPERIENCE_OPTIONS" :key="option.value" :value="option.value">
+                  {{ option.label }}
+                </option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-900 mb-2">Farm size</label>
+              <input
+                v-model="profile.farmSize"
+                type="text"
+                placeholder="Example: 660 sqm"
+                class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+              />
+            </div>
+
+            <div>
+              <div class="flex items-center justify-between gap-3 mb-3">
+                <label class="block text-sm font-medium text-gray-900">Cultivated crops</label>
+                <span class="text-xs text-gray-400">The selected main crop is also used for the farm profile.</span>
+              </div>
+              <div class="grid grid-cols-3 sm:grid-cols-5 gap-3">
+                <button
+                  v-for="crop in crops"
+                  :key="crop.id"
+                  type="button"
+                  @click="toggleCrop(crop.id)"
+                  class="flex flex-col items-center gap-2 p-3 rounded-xl transition-colors border-2"
+                  :class="profile.selectedCropIds.includes(crop.id) ? 'bg-brand/10 border-brand' : 'border-gray-200 hover:border-gray-300'"
+                >
+                  <div class="text-sm font-semibold text-gray-700 text-center leading-tight">{{ crop.name }}</div>
+                  <div
+                    v-if="profile.mainCropId === crop.id"
+                    class="text-[11px] px-2 py-1 rounded-full bg-brand text-white"
+                  >
+                    Main crop
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            <div v-if="profile.selectedCropIds.length">
+              <label class="block text-sm font-medium text-gray-900 mb-2">Primary crop</label>
+              <select
+                v-model.number="profile.mainCropId"
+                class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+              >
+                <option v-for="cropId in profile.selectedCropIds" :key="cropId" :value="cropId">
+                  {{ crops.find((item) => item.id === cropId)?.name || cropId }}
+                </option>
+              </select>
+            </div>
+
+            <div class="flex gap-3 pt-4">
+              <button
+                @click="cancelEdit"
+                class="flex-1 py-2.5 px-4 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                @click="saveProfile"
+                class="flex-1 py-2.5 px-4 bg-brand text-white rounded-lg text-sm font-medium hover:bg-opacity-90 transition-colors disabled:opacity-60"
+                :disabled="isSaving"
+              >
+                {{ isSaving ? 'Saving...' : 'Save' }}
               </button>
             </div>
           </div>
+        </template>
 
-          <!-- 농장명 -->
-          <div>
-            <label class="block text-sm font-medium text-gray-900 mb-2">농장명</label>
-            <input
-              v-model="userProfile.farmName"
-              type="text"
-              placeholder="농장명을 입력하세요"
-              class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-            />
-          </div>
-          <!-- Location modal for profile edit -->
-          <div
-            v-if="showLocationModal"
-            class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
-            @click.self="closeLocationModal"
-          >
-            <div class="bg-white rounded-2xl w-full max-w-sm mx-4 max-h-[80vh] flex flex-col">
-              <h2 class="text-lg font-bold text-gray-900 mb-5 p-6 pb-3 sticky top-0 bg-white rounded-t-2xl">지역 설정</h2>
-
-              <div class="overflow-y-auto flex-1 px-6">
-                <div class="mb-5">
-                  <label class="text-sm font-medium text-gray-900 block mb-3">도 선택</label>
-                  <div class="grid grid-cols-3 gap-2">
-                    <button
-                      v-for="province in provinces"
-                      :key="province"
-                      @click="selectedProvince = province; selectedCity = cities[province]?.[0] || ''"
-                      class="py-2.5 px-3 rounded-lg text-sm font-medium transition-colors"
-                      :class="
-                        selectedProvince === province
-                          ? 'bg-brand text-white'
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      "
-                    >
-                      {{ province }}
-                    </button>
-                  </div>
-                </div>
-
-                <div class="mb-6">
-                  <label class="text-sm font-medium text-gray-900 block mb-3">시/군 선택</label>
-                  <div class="grid grid-cols-2 gap-2">
-                    <button
-                      v-for="city in cities[selectedProvince] || []"
-                      :key="city"
-                      @click="selectedCity = city"
-                      class="py-2.5 px-3 rounded-lg text-sm font-medium transition-colors"
-                      :class="
-                        selectedCity === city
-                          ? 'bg-brand text-white'
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      "
-                    >
-                      {{ city }}
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div class="flex gap-3 p-6 pt-3 border-t border-gray-200 sticky bottom-0 bg-white rounded-b-2xl">
-                <button
-                  @click="closeLocationModal"
-                  class="flex-1 py-3 px-4 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
-                >
-                  취소
-                </button>
-                <button
-                  @click="confirmLocationFromModal"
-                  class="flex-1 py-3 px-4 bg-brand text-white rounded-lg text-sm font-medium hover:bg-opacity-90"
-                >
-                  확인
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <!-- 재배 작물 -->
-          <div>
-            <label class="block text-sm font-medium text-gray-900 mb-3">재배 작물</label>
-            <div class="grid grid-cols-5 gap-3">
-              <button
-                v-for="crop in crops"
-                :key="crop.id"
-                @click="toggleCrop(crop.id)"
-                class="flex flex-col items-center gap-2 p-3 rounded-xl transition-colors border-2"
-                :class="
-                  userProfile.selectedCrops.includes(crop.id)
-                    ? 'bg-brand bg-opacity-10 border-brand'
-                    : 'border-gray-200 hover:border-gray-300'
-                "
-              >
-                <div class="text-3xl">{{ crop.emoji }}</div>
-                <div class="text-xs font-medium text-gray-700 text-center leading-tight">{{ crop.name }}</div>
-              </button>
-            </div>
-          </div>
-
-          <!-- 농장 규모 -->
-          <div>
-            <label class="block text-sm font-medium text-gray-900 mb-2">농장 규모 (제곱미터)</label>
-            <input
-              v-model="userProfile.farmSizeNumber"
-              type="number"
-              placeholder="660"
-              class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-            />
-            <div v-if="userProfile.farmSizeNumber" class="text-xs text-gray-600 mt-2">
-              {{ formatFarmSize() }}
-            </div>
-          </div>
-
-          <!-- 액션 버튼 -->
-          <div class="flex gap-3 pt-4">
-            <button
-              @click="cancelEdit"
-              class="flex-1 py-2.5 px-4 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+        <template v-if="!isEditMode">
+          <div class="bg-white border border-gray-200 rounded-xl py-2 mb-5">
+            <div
+              v-for="(item, i) in menuItems"
+              :key="item"
+              class="flex justify-between items-center px-6 py-4 cursor-pointer"
+              :class="i > 0 ? 'border-t border-gray-100' : ''"
+              @click="handleMenuClick(item)"
             >
-              취소
-            </button>
-            <button
-              @click="saveProfile"
-              class="flex-1 py-2.5 px-4 bg-brand text-white rounded-lg text-sm font-medium hover:bg-opacity-90 transition-colors"
-            >
-              저장
-            </button>
+              <div class="text-sm text-gray-900">{{ item }}</div>
+              <div class="text-base text-slate-300">></div>
+            </div>
           </div>
-        </div>
-      </template>
 
-      <!-- Settings menu (프로필 보기 모드에서만 표시) -->
-      <template v-if="!isEditMode">
-        <div class="bg-white border border-gray-200 rounded-xl py-2 mb-5">
-          <div
-            v-for="(item, i) in menuItems"
-            :key="item"
-            class="flex justify-between items-center px-6 py-4 cursor-pointer"
-            :class="i > 0 ? 'border-t border-gray-100' : ''"
-            @click="handleMenuClick(item)"
+          <button
+            class="w-full py-3.5 bg-white border border-gray-200 rounded-[10px] text-sm text-red-600 font-medium"
+            @click="onLogout"
           >
-            <div class="text-sm text-gray-900">{{ item }}</div>
-            <div class="text-base text-slate-300">›</div>
-          </div>
-        </div>
-
-        <!-- Logout -->
-        <button
-          class="w-full py-3.5 bg-white border border-gray-200 rounded-[10px] text-sm text-red-600 font-medium"
-          @click="onLogout"
-        >
-          로그아웃
-        </button>
+            Logout
+          </button>
+        </template>
       </template>
     </div>
   </div>
