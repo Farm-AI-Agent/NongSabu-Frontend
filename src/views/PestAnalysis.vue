@@ -182,6 +182,16 @@ async function requestDiagnosis() {
   }
 }
 
+function translateStatus(status) {
+  const statusMap = {
+    'COMPLETED': '분석 완료',
+    'UNSUPPORTED': '지원 준비 중',
+    'FAILED': '분석 실패',
+    'PROCESSING': '분석 중',
+  }
+  return statusMap[status] || status
+}
+
 function openHistory() {
   router.push('/diagnosis-history')
 }
@@ -366,7 +376,7 @@ onBeforeUnmount(() => {
         <div class="flex flex-wrap items-center gap-3 mb-6">
           <div class="text-[15px] font-bold text-gray-900">진단 결과</div>
           <span class="px-3 py-1 rounded-full text-xs font-semibold" :class="resultBadgeClass">
-            {{ analysisResult.status }}
+            {{ translateStatus(analysisResult.status) }}
           </span>
           <span class="text-sm text-gray-500">{{ selectedCropName }}</span>
         </div>

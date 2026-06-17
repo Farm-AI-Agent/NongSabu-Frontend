@@ -27,6 +27,8 @@ const showRegionModal = ref(false)
 const selectedProvince = ref(null)
 const crops = ref([])
 const persistedUserCrops = ref([])
+const showInfoModal = ref(false)
+const infoModalType = ref(null) // 'support' 또는 'policy'
 
 const provinces = [
   '서울',
@@ -48,13 +50,13 @@ const provinces = [
 ]
 
 const citiesByProvince = {
-  '서울': ['서울'],
-  '부산': ['부산'],
-  '대구': ['대구'],
-  '인천': ['인천'],
-  '광주': ['광주'],
+  '서울': ['강남구', '강동구', '강북구', '강서구', '관악구', '광진구', '구로구', '금천구', '노원구', '도봉구', '동대문구', '동작구', '마포구', '서대문구', '서초구', '성동구', '성북구', '송파구', '영등포구', '용산구', '은평구', '종로구', '중구', '중랑구', '양천구'],
+  '부산': ['중구', '서구', '동구', '영도구', '부산진구', '동래구', '남구', '북구', '해운대구', '사하구', '금정구', '강서구', '연제구', '수영구', '사상구'],
+  '대구': ['중구', '동구', '서구', '남구', '북구', '수성구', '달서구'],
+  '인천': ['중구', '동구', '미추홀구', '연수구', '남동구', '부평구', '계양구', '서구'],
+  '광주': ['동구', '서구', '남구', '북구', '광산구'],
   '대전': ['대전'],
-  '울산': ['울산'],
+  '울산': ['중구', '남구', '동구', '북구', '울주군'],
   '경기': ['수원', '성남', '의정부', '안양', '부천', '광명', '평택', '동두천', '안산', '고양', '과천', '구리', '남양주', '오산', '시흥', '군포', '의왕', '하남', '여주', '이천', '광주', '양주', '포천', '김포', '화성', '용인'],
   '강원': ['춘천', '원주', '강릉', '동해', '태백', '속초', '삼척', '홍천', '횡성', '영월', '평창', '정선', '철원', '화천', '양구', '인제', '고성', '양양'],
   '충북': ['청주', '충주', '제천', '음성', '영동', '진천', '괴산', '증평', '단양'],
@@ -89,6 +91,13 @@ const selectedCropNames = computed(() => {
     .join(', ')
 })
 
+const farmSizeDisplay = computed(() => {
+  const num = Number(profile.farmSize)
+  if (!num || num <= 0 || Number.isNaN(num)) return ''
+  const pyeong = Math.round((num / 3.3058) * 100) / 100
+  return `${num}제곱미터 (${pyeong}평)`
+})
+
 const experienceLabel = computed(
   () => EXPERIENCE_OPTIONS.find((option) => option.value === profile.experienceLevel)?.label || '미설정',
 )
@@ -98,7 +107,7 @@ const farmInfo = computed(() => [
   { label: '지역', value: profile.region || '미설정' },
   { label: '주요 작물', value: selectedCropNames.value },
   { label: '경험', value: experienceLabel.value },
-  { label: '농장 규모', value: profile.farmSize || '미설정' },
+  { label: '농장 규모', value: farmSizeDisplay.value || '미설정' },
   { label: '가입일', value: profile.joinDate || '미설정' },
 ])
 
@@ -131,6 +140,13 @@ function formatDate(value) {
   return `${year}.${month}.${day}`
 }
 
+function formatFarmSize(num) {
+  const parsedNum = Number(num)
+  if (!parsedNum || parsedNum <= 0 || Number.isNaN(parsedNum)) return ''
+  const pyeong = Math.round((parsedNum / 3.3058) * 100) / 100
+  return `${parsedNum}제곱미터 (${pyeong}평)`
+}
+
 async function requestOrNull(path, options) {
   try {
     return await apiRequest(path, options)
@@ -152,11 +168,16 @@ function applyLoadedData({ member, farm, farmProfile, userCrops: userCropList, c
       ? [farmProfile.mainCropId]
       : []
 
+  // 저장된 farmSize에서 숫자만 추출 (예: "660제곱미터 (200평)" -> "660")
+  const savedFarmSize = farmProfile?.farmSize || farm?.cultivationArea || ''
+  const farmSizeMatch = savedFarmSize.match(/(\d+)/)
+  const extractedFarmSize = farmSizeMatch ? farmSizeMatch[1] : ''
+
   profile.name = member.name
   profile.email = member.email
   profile.region = farmProfile?.region || farm?.location || ''
   profile.farmName = farm?.name || ''
-  profile.farmSize = farmProfile?.farmSize || farm?.cultivationArea || ''
+  profile.farmSize = extractedFarmSize
   profile.experienceLevel = farmProfile?.experienceLevel || 'BEGINNER'
   profile.selectedCropIds = selectedCropIds
   profile.mainCropId = farmProfile?.mainCropId || selectedCropIds[0] || null
@@ -276,6 +297,7 @@ async function saveProfile() {
 
   try {
     const token = getToken()
+    const formattedFarmSize = formatFarmSize(profile.farmSize)
 
     await apiRequest('/api/v1/farms/me', {
       method: 'PUT',
@@ -283,7 +305,7 @@ async function saveProfile() {
       body: {
         name: profile.farmName,
         location: profile.region,
-        cultivationArea: profile.farmSize,
+        cultivationArea: formattedFarmSize,
         notes: '',
       },
     })
@@ -291,7 +313,7 @@ async function saveProfile() {
     const farmProfilePayload = {
       region: profile.region,
       experienceLevel: profile.experienceLevel,
-      farmSize: profile.farmSize,
+      farmSize: formattedFarmSize,
       mainCropId: profile.mainCropId,
     }
 
@@ -345,6 +367,12 @@ function toggleCrop(cropId) {
   }
 }
 
+function handleFarmSizeInput(e) {
+  const value = e.target.value
+  const numOnly = value.replace(/\D/g, '')
+  profile.farmSize = numOnly
+}
+
 function onLogout() {
   clearFarmLocation()
   logout()
@@ -359,7 +387,25 @@ function handleMenuClick(item) {
 
   if (item === '진단 이력') {
     router.push('/diagnosis-history')
+    return
   }
+
+  if (item === '문의 및 지원') {
+    infoModalType.value = 'support'
+    showInfoModal.value = true
+    return
+  }
+
+  if (item === '이용약관 및 정책') {
+    infoModalType.value = 'policy'
+    showInfoModal.value = true
+    return
+  }
+}
+
+function closeInfoModal() {
+  showInfoModal.value = false
+  infoModalType.value = null
 }
 
 const menuItems = ['알림 설정', '진단 이력', '관심 사업', '문의 및 지원', '이용약관 및 정책']
@@ -486,12 +532,18 @@ onMounted(() => {
 
             <div>
               <label class="block text-sm font-medium text-gray-900 mb-2">농장 규모</label>
-              <input
-                v-model="profile.farmSize"
-                type="text"
-                placeholder="예시: 660제곱미터"
-                class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand"
-              />
+              <div class="space-y-2">
+                <input
+                  :value="profile.farmSize"
+                  @input="handleFarmSizeInput"
+                  type="text"
+                  placeholder="숫자만 입력해주세요 (예: 660)"
+                  class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                />
+                <div v-if="farmSizeDisplay" class="text-sm text-gray-500">
+                  {{ farmSizeDisplay }}
+                </div>
+              </div>
             </div>
 
             <div>
@@ -641,6 +693,87 @@ onMounted(() => {
             </button>
           </div>
         </template>
+      </div>
+    </div>
+
+    <!-- Info Modal (Support & Policy) -->
+    <div v-if="showInfoModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div class="bg-white rounded-xl shadow-lg w-full max-w-2xl mx-4 max-h-[80vh] overflow-y-auto">
+        <div class="sticky top-0 bg-white border-b border-gray-200 p-6 flex items-center justify-between">
+          <h2 class="text-lg font-bold text-gray-900">
+            {{ infoModalType === 'support' ? '문의 및 지원' : '이용약관 및 정책' }}
+          </h2>
+          <button
+            @click="closeInfoModal"
+            class="text-2xl text-gray-400 hover:text-gray-600 bg-transparent border-none cursor-pointer"
+          >
+            ×
+          </button>
+        </div>
+
+        <div class="p-6 space-y-6">
+          <!-- Support Content -->
+          <template v-if="infoModalType === 'support'">
+            <div>
+              <h3 class="text-base font-bold text-gray-900 mb-3">자주 묻는 질문</h3>
+              <div class="space-y-4">
+                <div class="border-l-4 border-brand pl-4">
+                  <h4 class="font-medium text-gray-900 mb-1">Q: 분석 결과는 얼마나 신뢰할 수 있나요?</h4>
+                  <p class="text-sm text-gray-600">A: 저희 AI 모델은 고도로 훈련된 이미지 분석 모델을 사용하며, 실제 농업 현장 데이터로 검증되었습니다. 다만 정확한 진단을 위해서는 선명한 이미지 업로드를 권장합니다.</p>
+                </div>
+                <div class="border-l-4 border-brand pl-4">
+                  <h4 class="font-medium text-gray-900 mb-1">Q: 지원하는 작물은 무엇인가요?</h4>
+                  <p class="text-sm text-gray-600">A: 현재 포도, 토마토, 딸기, 오이 등 주요 작물을 지원하고 있습니다. 더 많은 작물이 곧 추가될 예정입니다.</p>
+                </div>
+                <div class="border-l-4 border-brand pl-4">
+                  <h4 class="font-medium text-gray-900 mb-1">Q: 내 분석 데이터는 안전한가요?</h4>
+                  <p class="text-sm text-gray-600">A: 모든 사용자 데이터는 암호화되어 저장되며, 개인정보는 보호됩니다. 자세한 사항은 개인정보처리방침을 참고해주세요.</p>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 class="text-base font-bold text-gray-900 mb-3">기술 지원</h3>
+              <p class="text-sm text-gray-600 mb-4">문제가 발생하거나 도움이 필요하신 경우 아래로 연락해주세요.</p>
+              <div class="bg-gray-50 p-4 rounded-lg space-y-2 text-sm">
+                <p><span class="font-medium text-gray-900">이메일:</span> <span class="text-gray-600">support@nongsabu.com</span></p>
+                <p><span class="font-medium text-gray-900">전화:</span> <span class="text-gray-600">02-1234-5678</span></p>
+                <p><span class="font-medium text-gray-900">운영시간:</span> <span class="text-gray-600">월-금 09:00~18:00</span></p>
+              </div>
+            </div>
+          </template>
+
+          <!-- Policy Content -->
+          <template v-else>
+            <div>
+              <h3 class="text-base font-bold text-gray-900 mb-3">서비스 이용약관</h3>
+              <div class="space-y-3 text-sm text-gray-600 leading-relaxed">
+                <p><span class="font-medium text-gray-900">제1조 (목적)</span><br>본 약관은 농사부(이하 "회사")가 제공하는 AI 병해충 진단 서비스(이하 "서비스")의 이용 조건 및 절차, 회사와 이용자의 권리, 의무 및 책임사항을 규정함을 목적으로 합니다.</p>
+                <p><span class="font-medium text-gray-900">제2조 (약관의 효력 및 변경)</span><br>이 약관은 서비스 화면에 게시함으로써 효력이 발생합니다. 회사는 필요시 약관을 변경할 수 있으며, 변경된 약관은 공지로 15일 이후부터 적용됩니다.</p>
+                <p><span class="font-medium text-gray-900">제3조 (서비스의 이용)</span><br>회원은 본 약관에 따라 서비스를 이용할 수 있습니다. 불법적인 목적으로 서비스를 이용할 수 없으며, 회사가 판단하기에 서비스 이용이 부적절하다고 판단되는 경우 이용을 제한할 수 있습니다.</p>
+              </div>
+            </div>
+
+            <div>
+              <h3 class="text-base font-bold text-gray-900 mb-3">개인정보처리방침</h3>
+              <div class="space-y-3 text-sm text-gray-600 leading-relaxed">
+                <p><span class="font-medium text-gray-900">수집하는 개인정보</span><br>회사는 서비스 제공을 위해 다음의 개인정보를 수집합니다: 이름, 이메일, 전화번호, 농장 정보, 업로드된 이미지.</p>
+                <p><span class="font-medium text-gray-900">정보의 사용</span><br>수집된 정보는 서비스 제공, 사용자 지원, 서비스 개선을 목적으로만 사용됩니다.</p>
+                <p><span class="font-medium text-gray-900">정보보호</span><br>모든 개인정보는 SSL 암호화 기술로 보호되며, 무단 접근을 방지하기 위해 적절한 보안 조치를 취합니다.</p>
+                <p><span class="font-medium text-gray-900">정보 삭제</span><br>사용자는 언제든지 개인정보의 삭제를 요청할 수 있으며, 계정 삭제 시 관련 정보는 30일 내에 삭제됩니다.</p>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <div class="border-t border-gray-200 p-6 flex justify-end">
+          <button
+            @click="closeInfoModal"
+            class="px-4 py-2 bg-brand text-white rounded-lg text-sm font-medium hover:bg-opacity-90 transition-colors"
+          >
+            닫기
+          </button>
+        </div>
       </div>
     </div>
   </div>

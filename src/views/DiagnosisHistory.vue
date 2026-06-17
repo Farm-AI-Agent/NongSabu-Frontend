@@ -29,6 +29,26 @@ function formatDate(value) {
   return new Date(value).toLocaleString('ko-KR')
 }
 
+function translateStatus(status) {
+  const statusMap = {
+    'PENDING': '진행 중',
+    'COMPLETED': '완료',
+    'FAILED': '실패',
+    'PROCESSING': '분석 중',
+  }
+  return statusMap[status] || status
+}
+
+function translateSeverity(severity) {
+  const severityMap = {
+    'LOW': '낮음',
+    'MEDIUM': '중간',
+    'HIGH': '높음',
+    'CRITICAL': '심각',
+  }
+  return severityMap[severity] || severity
+}
+
 async function loadHistory() {
   loading.value = true
   errorMessage.value = ''
@@ -114,7 +134,7 @@ onMounted(() => {
                 {{ record.diseaseName || record.message }}
               </div>
               <div class="mt-2 flex flex-wrap gap-2 text-xs">
-                <span class="px-2.5 py-1 rounded-full bg-slate-100 text-slate-700">{{ record.status }}</span>
+                <span class="px-2.5 py-1 rounded-full bg-slate-100 text-slate-700">{{ translateStatus(record.status) }}</span>
                 <span class="px-2.5 py-1 rounded-full bg-slate-100 text-slate-700">{{ record.filename }}</span>
               </div>
             </div>
@@ -152,7 +172,7 @@ onMounted(() => {
 
             <div class="rounded-xl bg-slate-50 p-5">
               <div class="text-xs text-gray-500 mb-2">상태</div>
-              <div class="text-sm font-semibold text-gray-900">{{ selected.status }}</div>
+              <div class="text-sm font-semibold text-gray-900">{{ translateStatus(selected.status) }}</div>
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -162,7 +182,7 @@ onMounted(() => {
               </div>
               <div class="rounded-xl border border-gray-200 p-5">
                 <div class="text-xs text-gray-500 mb-2">심각도</div>
-                <div class="text-sm text-gray-900">{{ selected.severity || '-' }}</div>
+                <div class="text-sm text-gray-900">{{ selected.severity ? translateSeverity(selected.severity) : '-' }}</div>
               </div>
             </div>
 

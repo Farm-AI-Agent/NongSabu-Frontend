@@ -35,7 +35,7 @@ onMounted(async () => {
     <div class="max-w-shell mx-auto px-5 py-3.5 flex justify-between items-center flex-wrap gap-3">
       <router-link to="/" class="flex items-center gap-2.5 no-underline">
         <img src="/농사부.png" alt="NongSabu logo" class="w-9 h-9 rounded-md" />
-        <div class="font-bold text-brand text-lg tracking-tight">농사부 닥터</div>
+        <div class="font-bold text-brand text-lg tracking-tight">작물닥터 농사부</div>
         <div class="text-xs text-gray-400 ml-1 hidden sm:block">작물 병해충 진단 AI 어시스턴트</div>
       </router-link>
 
