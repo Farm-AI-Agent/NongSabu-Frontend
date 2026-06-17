@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 
 // 1️⃣ 대시보드에 표시할 추천 지원사업 데이터
 // 왜? SupportPrograms.vue와 동일한 구조의 데이터를 사용해야 모달에서도 같은 정보를 보여줄 수 있음
@@ -76,6 +76,38 @@ const showModal = ref(false)
 // 왜? 사용자가 어떤 사업을 선택했는지 알아야 모달에 그 사업의 상세정보를 표시할 수 있음
 const selectedProgram = ref(null)
 
+// 정렬 옵션: 마감일 빠른순(default), 마감일 늦은순, 지원금 큰순, 신청 가능 우선
+const sortOption = ref('deadline_asc')
+
+function parseKoreanDate(kr) {
+  // expects format like '2025년 6월 30일'
+  try {
+    const m = kr.match(/(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일/)
+    if (!m) return new Date(0)
+    return new Date(parseInt(m[1]), parseInt(m[2]) - 1, parseInt(m[3]))
+  } catch (e) {
+    return new Date(0)
+  }
+}
+
+const sortedPrograms = computed(() => {
+  const list = [...programs]
+  if (sortOption.value === 'deadline_asc') {
+    return list.sort((a, b) => parseKoreanDate(a.deadline) - parseKoreanDate(b.deadline))
+  }
+  if (sortOption.value === 'deadline_desc') {
+    return list.sort((a, b) => parseKoreanDate(b.deadline) - parseKoreanDate(a.deadline))
+  }
+  if (sortOption.value === 'subsidy_desc') {
+    // remove non-digits
+    return list.sort((a, b) => parseInt(b.subsidy.replace(/[^0-9]/g, '')) - parseInt(a.subsidy.replace(/[^0-9]/g, '')))
+  }
+  if (sortOption.value === 'applyable_first') {
+    return list.sort((a, b) => (b.badge === '신청 가능') - (a.badge === '신청 가능'))
+  }
+  return list
+})
+
 // 4️⃣ 사업을 선택했을 때 실행되는 함수
 // 왜? 클릭 이벤트 핸들러로, 사용자가 어떤 사업을 클릭했는지 감지하고 selectedProgram에 저장
 function openDetail(program) {
@@ -93,15 +125,21 @@ function closeModal() {
 
 <template>
   <div class="bg-white border border-gray-200 rounded-[10px] p-[1.25rem_1.5rem] h-full">
-    <div class="text-[15px] font-bold text-gray-900 mb-[1.1rem] flex items-center gap-2">
+    <div class="text-[15px] font-bold text-gray-900 mb-[1.1rem] flex items-center gap-2 justify-between">
       <div class="w-1 h-4 bg-brand rounded-sm"></div>
       추천 지원사업
+      <select v-model="sortOption" class="text-sm border border-gray-200 rounded px-2 py-1 bg-white">
+        <option value="deadline_asc">마감일 빠른순</option>
+        <option value="deadline_desc">마감일 늦은순</option>
+        <option value="subsidy_desc">지원금 큰순</option>
+        <option value="applyable_first">신청 가능 우선</option>
+      </select>
     </div>
     <div class="flex flex-col">
       <!-- 6️⃣ 각 사업을 반복해서 표시하는 부분 -->
       <!-- 왜? programs 배열의 각 항목을 카드로 표시하고, 클릭 가능하게 만들어야 함 -->
       <div
-        v-for="(p, i) in programs"
+        v-for="(p, i) in sortedPrograms"
         :key="p.id"
         class="py-3.5 cursor-pointer hover:bg-gray-50 px-2 rounded transition-colors"
         :class="i > 0 ? 'border-t border-gray-100' : ''"

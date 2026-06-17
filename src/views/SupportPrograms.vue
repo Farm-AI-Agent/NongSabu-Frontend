@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed } from 'vue'
-import AppHeader from '../components/AppHeader.vue'
-import NavTabs from '../components/NavTabs.vue'
+// AppHeader is rendered globally from App.vue
+// NavTabs removed per design
 import FloatingChatButton from '../components/FloatingChatButton.vue'
 import { useAuth } from '../composables/useAuth'
 
@@ -115,9 +115,20 @@ const selectedCategory = ref('전체')
 const selectedCrop = ref('전체')
 const selectedProgram = ref(null)
 const showModal = ref(false)
+const sortOption = ref('deadline_asc')
 
 const categories = ['전체', '시설·기계', '인증', '교육·연구']
 const crops = ['전체', '토마토', '딸기', '오이']
+
+function parseKoreanDate(kr) {
+  try {
+    const m = kr.match(/(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일/)
+    if (!m) return new Date(0)
+    return new Date(parseInt(m[1]), parseInt(m[2]) - 1, parseInt(m[3]))
+  } catch (e) {
+    return new Date(0)
+  }
+}
 
 const filteredPrograms = computed(() => {
   return supportPrograms.value.filter(program => {
@@ -127,6 +138,15 @@ const filteredPrograms = computed(() => {
     const matchCrop = selectedCrop.value === '전체' || program.crop === selectedCrop.value
     return matchSearch && matchCategory && matchCrop
   })
+})
+
+const sortedPrograms = computed(() => {
+  const list = filteredPrograms.value.slice()
+  if (sortOption.value === 'deadline_asc') return list.sort((a,b) => parseKoreanDate(a.deadline) - parseKoreanDate(b.deadline))
+  if (sortOption.value === 'deadline_desc') return list.sort((a,b) => parseKoreanDate(b.deadline) - parseKoreanDate(a.deadline))
+  if (sortOption.value === 'subsidy_desc') return list.sort((a,b) => parseInt(b.subsidy.replace(/[^0-9]/g,'')) - parseInt(a.subsidy.replace(/[^0-9]/g,'')))
+  if (sortOption.value === 'applyable_first') return list.sort((a,b) => (b.liked?1:0) - (a.liked?1:0))
+  return list
 })
 
 function loadFavorites() {
@@ -171,10 +191,9 @@ function closeModal() {
 </script>
 
 <template>
-  <div class="min-h-screen bg-page">
+  <div class="min-h-screen bg-page pl-56">
     <div class="h-1 bg-brand"></div>
-    <AppHeader />
-    <NavTabs active="지원사업" />
+    
 
     <div class="px-5 py-7 max-w-shell mx-auto">
       <!-- Header -->
@@ -233,13 +252,21 @@ function closeModal() {
       </div>
 
       <!-- Programs list -->
+      <div class="mb-4 flex items-center justify-end">
+        <select v-model="sortOption" class="text-sm border border-gray-200 rounded px-2 py-1 bg-white">
+          <option value="deadline_asc">마감일 빠른순</option>
+          <option value="deadline_desc">마감일 늦은순</option>
+          <option value="subsidy_desc">지원금 큰순</option>
+          <option value="applyable_first">신청 가능 우선</option>
+        </select>
+      </div>
       <div class="space-y-4 mb-8">
         <div v-if="filteredPrograms.length === 0" class="text-center py-12">
           <div class="text-gray-400 text-sm">검색 결과가 없습니다.</div>
         </div>
 
         <div
-          v-for="program in filteredPrograms"
+          v-for="program in sortedPrograms"
           :key="program.id"
           class="bg-white border border-gray-200 rounded-xl p-5 hover:shadow-md transition-shadow cursor-pointer"
         >

@@ -1,6 +1,6 @@
 <script setup>
-import AppHeader from '../components/AppHeader.vue'
-import NavTabs from '../components/NavTabs.vue'
+// AppHeader is rendered globally from App.vue
+// NavTabs removed per design
 import FloatingChatButton from '../components/FloatingChatButton.vue'
 import MetricCardGrid from '../components/MetricCardGrid.vue'
 import RecommendedProgramsCard from '../components/RecommendedProgramsCard.vue'
@@ -11,10 +11,9 @@ const { userName } = useAuth()
 </script>
 
 <template>
-  <div class="min-h-screen bg-page">
+  <div class="min-h-screen bg-page pl-56">
     <div class="h-1 bg-brand"></div>
-    <AppHeader />
-    <NavTabs active="대시보드" />
+    
 
     <div class="px-5 py-7 max-w-shell mx-auto">
       <!-- Greeting -->

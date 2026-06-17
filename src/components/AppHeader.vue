@@ -135,57 +135,45 @@ function selectLocation() {
 </script>
 
 <template>
-  <header class="bg-white border-b border-gray-200">
-    <div
-      class="max-w-shell mx-auto px-5 py-3.5 flex justify-between items-center flex-wrap gap-3"
-    >
-      <!-- Logo -->
-      <router-link to="/" class="flex items-center gap-2.5 no-underline">
-        <img src="/농사부.png" alt="농사부 로고" class="w-9 h-9 rounded-md" />
-        <div class="font-bold text-brand text-lg tracking-tight">작물닥터 농사부</div>
-        <div class="text-xs text-gray-400 ml-1 hidden sm:block">농업 병해충 진단 비서</div>
-      </router-link>
+  <aside class="fixed inset-y-0 left-0 w-56 bg-white border-r border-gray-200">
+    <div class="h-4 bg-brand"></div>
+    <div class="px-4 pb-6 pt-14 flex flex-col h-full">
+      <nav class="flex-1">
+        <ul class="space-y-2">
+          <li>
+            <router-link to="/" class="block px-4 py-3 rounded text-base text-gray-700 hover:bg-gray-100">대시보드</router-link>
+          </li>
+          <li>
+            <router-link to="/pest-analysis" class="block px-4 py-3 rounded text-base text-gray-700 hover:bg-gray-100">병해충 분석</router-link>
+          </li>
+          <li>
+            <router-link to="/support-programs" class="block px-4 py-3 rounded text-base text-gray-700 hover:bg-gray-100">지원사업</router-link>
+          </li>
+          <li>
+            <router-link to="/favorites" class="block px-4 py-3 rounded text-base text-gray-700 hover:bg-gray-100">관심 지원사업</router-link>
+          </li>
+          <li>
+            <router-link to="/diagnosis-history" class="block px-4 py-3 rounded text-base text-gray-700 hover:bg-gray-100">진단 이력</router-link>
+          </li>
+          <li>
+            <router-link to="/mypage" class="block px-4 py-3 rounded text-base text-gray-700 hover:bg-gray-100">마이페이지</router-link>
+          </li>
+        </ul>
+      </nav>
 
-      <!-- Right: login state -->
-      <div class="flex items-center gap-5">
-        <button
-          @click="openLocationModal"
-          class="text-xs text-gray-500 flex items-center gap-1 hover:text-gray-700 transition-colors cursor-pointer bg-transparent border-none p-0"
-        >
-          📍 {{ location }}
-        </button>
-
-        <router-link
-          v-if="loggedIn"
-          to="/mypage"
-          class="text-xs text-gray-500 flex items-center gap-1.5 no-underline"
-        >
-          <div
-            class="w-7 h-7 bg-brand-light border border-brand-border rounded-full text-brand flex items-center justify-center font-medium text-xs"
-          >
-            {{ userName.charAt(0) }}
-          </div>
-          {{ userName }} 님
-        </router-link>
-
-        <div v-else class="flex items-center gap-2">
-          <router-link
-            to="/login"
-            class="text-sm text-brand no-underline px-3.5 py-1.5 border border-brand-border rounded-md"
-          >
-            로그인
-          </router-link>
-          <router-link
-            to="/login"
-            class="text-sm text-white no-underline px-3.5 py-1.5 bg-brand rounded-md"
-          >
-            회원가입
+      <div class="mt-4 text-sm text-gray-500">
+        <div class="mb-3">📍 {{ location }}</div>
+        <div>
+          <router-link v-if="loggedIn" to="/mypage" class="flex items-center gap-3 text-base text-gray-700 no-underline">
+            <div class="w-10 h-10 bg-brand-light border border-brand-border rounded-full text-brand flex items-center justify-center font-medium text-sm">{{ userName.charAt(0) }}</div>
+            <div class="truncate">{{ userName }}</div>
           </router-link>
         </div>
       </div>
+
     </div>
 
-    <!-- Location Modal -->
+    <!-- Location Modal (unchanged) -->
     <div
       v-if="showLocationModal"
       class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
@@ -255,5 +243,5 @@ function selectLocation() {
         </div>
       </div>
     </div>
-  </header>
+  </aside>
 </template>

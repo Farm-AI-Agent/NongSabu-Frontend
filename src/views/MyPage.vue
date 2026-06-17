@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import AppHeader from '../components/AppHeader.vue'
+// AppHeader is rendered globally from App.vue
 import { useAuth } from '../composables/useAuth'
 
 const router = useRouter()
@@ -190,7 +190,14 @@ function handleMenuClick(item) {
     router.push('/diagnosis-history')
     return
   }
-  // other items can be implemented later
+  if (item === '고객센터 · 문의') {
+    router.push('/support/contact')
+    return
+  }
+  if (item === '이용약관 및 정책') {
+    router.push('/support/terms')
+    return
+  }
 }
 
 onMounted(() => {
@@ -199,9 +206,8 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-page">
+  <div class="min-h-screen bg-page pl-56">
     <div class="h-1 bg-brand"></div>
-    <AppHeader />
 
     <div class="px-5 py-7 max-w-shell mx-auto" style="max-width: 760px">
       <!-- 프로필 보기 모드 -->

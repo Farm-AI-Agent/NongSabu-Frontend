@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
-import AppHeader from '../components/AppHeader.vue'
-import NavTabs from '../components/NavTabs.vue'
+// AppHeader is rendered globally from App.vue
+// NavTabs removed per design
 import FloatingChatButton from '../components/FloatingChatButton.vue'
 
 const history = ref([])
@@ -41,10 +41,9 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-page">
+  <div class="min-h-screen bg-page pl-56">
     <div class="h-1 bg-brand"></div>
-    <AppHeader />
-    <NavTabs active="병해충 분석" />
+    
 
     <div class="px-5 py-7 max-w-shell mx-auto">
       <div class="mb-6 border-b border-gray-200 pb-5">

@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed } from 'vue'
-import AppHeader from '../components/AppHeader.vue'
-import NavTabs from '../components/NavTabs.vue'
+// AppHeader is rendered globally from App.vue
+// NavTabs removed per design
 import FloatingChatButton from '../components/FloatingChatButton.vue'
 
 // 1️⃣ 동의 상태 관리
@@ -139,7 +139,7 @@ function requestDiagnosis() {
     // store image data URL if present
     image: uploadedImage.value || null,
     // snapshot of diagnosisData and selected tab
-    diagnosisData: diagnosisData.map(d => ({ name: d.name, percentage: d.percentage })),
+    diagnosisData: diagnosisData.map(d => ({ name: d.name, percentage: d.percentage, color: d.color })),
     selectedDiseaseTab: selectedDiseaseTab.value
   }
 
@@ -154,6 +154,13 @@ function requestDiagnosis() {
 // 왜? 병명 탭과 정보 종류 탭을 각각 선택해서 해당 정보를 표시하기 위해
 const selectedDiseaseTab = ref(0) // 0: 흰가루병, 1: 갈색무늬병
 const selectedInfoTab = ref('발병원인') // '발병원인' | '발병 정보' | '방제 정보'
+
+function infoColor(infoType) {
+  if (infoType === '발병원인') return '#e94b5a'
+  if (infoType === '발병 정보') return '#f59e0b'
+  if (infoType === '방제 정보') return '#2d8a4f'
+  return '#999'
+}
 
 const diagnosisData = [
   {
@@ -176,10 +183,9 @@ const diagnosisData = [
 </script>
 
 <template>
-  <div class="min-h-screen bg-page">
+  <div class="min-h-screen bg-page pl-56">
     <div class="h-1 bg-brand"></div>
-    <AppHeader />
-    <NavTabs active="병해충 분석" />
+    
 
     <div v-if="!showResult" class="px-5 py-7 max-w-shell mx-auto">
       <!-- Title -->
@@ -307,7 +313,7 @@ const diagnosisData = [
               <!-- 제목 및 설명 -->
               <div class="mb-6">
                 <div class="text-[15px] font-bold text-gray-900 mb-2">분류선택</div>
-                <div class="text-sm text-gray-600">입로드한 사진의 작물을 선택 후 진단요청을 진행하세요.</div>
+                <div class="text-sm text-gray-600">업로드한 사진의 작물을 선택 후 진단요청을 진행하세요.</div>
               </div>
 
               <!-- 작물 선택 그리드 -->
@@ -337,7 +343,7 @@ const diagnosisData = [
                 @click="resetToUpload"
                 class="flex-1 py-2.5 px-4 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
               >
-                처음으로
+                사진 재선택
               </button>
               <button
                 @click="requestDiagnosis"
@@ -392,17 +398,12 @@ const diagnosisData = [
             </div>
 
             <!-- 버튼 -->
-            <div class="flex gap-3">
+            <div class="mt-8">
               <button
                 @click="showDiagnosisResult = false"
-                class="flex-1 py-2.5 px-4 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                class="w-full py-2.5 px-4 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
               >
-                처음으로
-              </button>
-              <button
-                class="flex-1 py-2.5 px-4 bg-gray-500 text-white rounded-lg text-sm font-medium hover:bg-opacity-90 transition-colors"
-              >
-                {{ selectedCrop ? crops.find(c => c.id === selectedCrop)?.name : '작물' }}
+                이전으로
               </button>
             </div>
           </div>
@@ -435,11 +436,8 @@ const diagnosisData = [
                 :key="infoType"
                 @click="selectedInfoTab = infoType"
                 class="px-5 py-2 rounded-full font-medium text-sm transition-colors"
-                :class="
-                  selectedInfoTab === infoType
-                    ? 'bg-brand text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                "
+                :class="selectedInfoTab === infoType ? 'text-white' : 'text-gray-700 bg-gray-100 hover:bg-gray-200'"
+                :style="selectedInfoTab === infoType ? { backgroundColor: infoColor(infoType) } : null"
               >
                 {{ infoType }}
               </button>

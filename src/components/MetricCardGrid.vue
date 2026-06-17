@@ -34,7 +34,7 @@ const metrics = computed(() => {
       sub: cropNames || '작물을 선택해주세요',
       subClass: 'text-gray-500'
     },
-    { label: '시세 동향', number: '상승세', sub: '토마토 +8.2%', subClass: 'text-success' },
+    { label: '날씨 정보', number: '맑음', sub: '오늘 24°C · 강수확률 10%', subClass: 'text-blue-500' },
   ]
 })
 
