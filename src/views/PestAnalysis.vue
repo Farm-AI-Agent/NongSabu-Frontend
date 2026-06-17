@@ -1,76 +1,132 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import AppHeader from '../components/AppHeader.vue'
 import NavTabs from '../components/NavTabs.vue'
 import FloatingChatButton from '../components/FloatingChatButton.vue'
+import { ApiError, apiRequest } from '../lib/api'
+import { useAuth } from '../composables/useAuth'
 
-// 1️⃣ 동의 상태 관리
-// 왜? 사용자가 약관에 동의해야만 사진 업로드 가능하게 하기 위해
-const agreed = ref(null) // null | true | false
-const agreedYes = computed(() => agreed.value === true)
+const router = useRouter()
+const { accessToken } = useAuth()
 
-// 2️⃣ 사진 업로드 상태 관리
-// 왜? 업로드된 사진을 표시하고, 진단 결과 화면으로 전환하기 위해
-const uploadedImage = ref(null)
-const showResult = ref(false)
-
-// 3️⃣ 진단 결과 화면에서 사용할 데이터
-// 왜? 병/해충 선택, 작물 선택 등의 상태를 관리하기 위해
-const diagnosisType = ref('병') // '병' | '해충'
-const selectedCrop = ref(null)
-const showDiagnosisResult = ref(false)
-
-// 4️⃣ 사용 가능한 작물 목록
-// 왜? 사용자가 선택할 수 있는 작물을 제공하기 위해
-const crops = [
-  { id: 1, name: '감', emoji: '🍊' },
-  { id: 2, name: '감귤', emoji: '🍊' },
-  { id: 3, name: '감자', emoji: '🥔' },
-  { id: 4, name: '고구마', emoji: '🍠' },
-  { id: 5, name: '고추', emoji: '🌶️' },
-  { id: 6, name: '단고추', emoji: '🫑' },
-  { id: 7, name: '딸기', emoji: '🍓' },
-  { id: 8, name: '포도', emoji: '🍇' },
-  { id: 9, name: '땅콩', emoji: '🥜' },
-  { id: 10, name: '마늘', emoji: '🧄' },
-  { id: 11, name: '배', emoji: '🍐' },
-  { id: 12, name: '배추', emoji: '🥬' },
-  { id: 13, name: '복숭아', emoji: '🍑' },
-  { id: 14, name: '수박', emoji: '🍉' },
-  { id: 15, name: '쌀', emoji: '🌾' },
-]
-
-// 5️⃣ 파일 입력 엘리먼트 참조
-// 왜? 사진찾기 버튼을 클릭하면 파일 선택 대화상자를 열기 위해
+const agreed = ref(null)
 const fileInput = ref(null)
-
-// 5️⃣-2 드래그 오버 상태
-// 왜? 드래그 중일 때 시각적 피드백을 주기 위해
 const isDragOver = ref(false)
 
-// 6️⃣ 파일 처리 함수
-// 왜? 파일을 읽어서 이미지로 변환하는 로직을 공통화하기 위해
-function processFile(file) {
-  if (file && file.type.startsWith('image/')) {
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      uploadedImage.value = e.target?.result
-      showResult.value = true
-    }
-    reader.readAsDataURL(file)
+const crops = ref([])
+const cropsLoading = ref(false)
+const cropsError = ref('')
+
+const selectedFile = ref(null)
+const previewUrl = ref('')
+const selectedCropId = ref(null)
+
+const submitting = ref(false)
+const submitError = ref('')
+const analysisResult = ref(null)
+
+const currentStep = computed(() => {
+  if (analysisResult.value) {
+    return 'result'
+  }
+
+  if (selectedFile.value) {
+    return 'crop'
+  }
+
+  return 'upload'
+})
+
+const selectedCropName = computed(() => {
+  const crop = crops.value.find((item) => item.id === selectedCropId.value)
+  return crop?.name || analysisResult.value?.cropName || ''
+})
+
+const confidenceText = computed(() => {
+  if (!analysisResult.value?.supported || !analysisResult.value?.confidence) {
+    return '-'
+  }
+
+  return `${(analysisResult.value.confidence * 100).toFixed(1)}%`
+})
+
+const resultBadgeClass = computed(() => {
+  switch (analysisResult.value?.status) {
+    case 'COMPLETED':
+      return 'bg-emerald-100 text-emerald-700'
+    case 'UNSUPPORTED':
+      return 'bg-amber-100 text-amber-700'
+    case 'FAILED':
+      return 'bg-rose-100 text-rose-700'
+    default:
+      return 'bg-slate-100 text-slate-700'
+  }
+})
+
+// 작물 선택지는 백엔드에서 받아옵니다.
+// 이렇게 하면 업로드 화면의 작물 ID와 분석 API가 기대하는 작물 ID를 동일하게 맞출 수 있습니다.
+async function loadCrops() {
+  cropsLoading.value = true
+  cropsError.value = ''
+
+  try {
+    crops.value = await apiRequest('/api/v1/crops', {
+      token: accessToken.value || undefined,
+    })
+  } catch (error) {
+    cropsError.value = resolveErrorMessage(error, '작물 목록을 불러오지 못했습니다.')
+  } finally {
+    cropsLoading.value = false
   }
 }
 
-// 6️⃣-2 사진 업로드 함수 (파일 선택)
-// 왜? 사용자가 선택한 사진을 처리하기 위해
+function resolveErrorMessage(error, fallback) {
+  return error instanceof ApiError ? error.message : fallback
+}
+
+function revokePreviewUrl() {
+  if (!previewUrl.value) {
+    return
+  }
+
+  URL.revokeObjectURL(previewUrl.value)
+  previewUrl.value = ''
+}
+
+// 현재 세션에서만 사용할 미리보기 URL을 로컬에 보관합니다.
+// 저장된 분석 이력은 이후 백엔드에서 다시 불러옵니다.
+function selectFile(file) {
+  if (!file) {
+    return
+  }
+
+  if (!file.type.startsWith('image/')) {
+    submitError.value = '이미지 파일만 업로드할 수 있습니다.'
+    return
+  }
+
+  revokePreviewUrl()
+  selectedFile.value = file
+  previewUrl.value = URL.createObjectURL(file)
+  selectedCropId.value = null
+  analysisResult.value = null
+  submitError.value = ''
+}
+
+function resetToUpload() {
+  revokePreviewUrl()
+  selectedFile.value = null
+  selectedCropId.value = null
+  analysisResult.value = null
+  submitError.value = ''
+}
+
 function handleImageUpload(event) {
-  const file = event.target.files?.[0]
-  if (file) {
-    processFile(file)
-  }
+  selectFile(event.target.files?.[0] || null)
+  event.target.value = ''
 }
 
-// 6️⃣-3 드래그 앤 드롭 이벤트
 function handleDragOver(event) {
   event.preventDefault()
   event.stopPropagation()
@@ -88,91 +144,55 @@ function handleDrop(event) {
   event.stopPropagation()
   isDragOver.value = false
 
-  if (agreed.value === true) {
-    const file = event.dataTransfer?.files?.[0]
-    if (file) {
-      processFile(file)
-    }
+  if (!agreed.value) {
+    return
   }
+
+  selectFile(event.dataTransfer?.files?.[0] || null)
 }
 
-// 7️⃣ 처음으로 돌아가는 함수
-// 왜? 사용자가 다른 사진으로 다시 진단하고 싶을 때 초기 화면으로 돌아가기 위해
-function resetToUpload() {
-  uploadedImage.value = null
-  showResult.value = false
-  showDiagnosisResult.value = false
-  selectedCrop.value = null
-  diagnosisType.value = '병'
-}
-
-// 8️⃣ 진단 요청 함수
-// 왜? 사용자가 "AI 영상진단 요청" 버튼을 클릭했을 때 진단 결과 화면으로 전환하고
-//   진단 결과를 로컬에 저장해서 진단 이력에서 확인할 수 있게 함
-function loadDiagnosisHistory() {
-  try {
-    return JSON.parse(localStorage.getItem('fd_diagnosis_history') || '[]')
-  } catch (e) {
-    return []
+async function requestDiagnosis() {
+  if (!selectedFile.value) {
+    submitError.value = '분석할 이미지를 먼저 선택해주세요.'
+    return
   }
-}
 
-function saveDiagnosisHistory(list) {
-  localStorage.setItem('fd_diagnosis_history', JSON.stringify(list))
-}
-
-function addDiagnosisRecord(record) {
-  const hist = loadDiagnosisHistory()
-  hist.unshift(record) // newest first
-  saveDiagnosisHistory(hist)
-}
-
-function requestDiagnosis() {
-  showDiagnosisResult.value = true
-
-  // create a simple diagnosis record and persist it
-  const record = {
-    id: Date.now(),
-    date: new Date().toISOString(),
-    diagnosisType: diagnosisType.value,
-    selectedCrop: selectedCrop.value || null,
-    // store image data URL if present
-    image: uploadedImage.value || null,
-    // snapshot of diagnosisData and selected tab
-    diagnosisData: diagnosisData.map(d => ({ name: d.name, percentage: d.percentage })),
-    selectedDiseaseTab: selectedDiseaseTab.value
+  if (!selectedCropId.value) {
+    submitError.value = '작물을 선택한 뒤 분석을 요청해주세요.'
+    return
   }
+
+  submitting.value = true
+  submitError.value = ''
+
+  const formData = new FormData()
+  formData.append('cropId', String(selectedCropId.value))
+  formData.append('file', selectedFile.value)
 
   try {
-    addDiagnosisRecord(record)
-  } catch (e) {
-    console.error('진단 이력 저장 실패', e)
+    analysisResult.value = await apiRequest('/api/v1/analysis/images', {
+      method: 'POST',
+      body: formData,
+      token: accessToken.value,
+    })
+  } catch (error) {
+    submitError.value = resolveErrorMessage(error, '이미지 분석 요청에 실패했습니다.')
+  } finally {
+    submitting.value = false
   }
 }
 
-// 9️⃣ 진단 결과 탭 관리
-// 왜? 병명 탭과 정보 종류 탭을 각각 선택해서 해당 정보를 표시하기 위해
-const selectedDiseaseTab = ref(0) // 0: 흰가루병, 1: 갈색무늬병
-const selectedInfoTab = ref('발병원인') // '발병원인' | '발병 정보' | '방제 정보'
+function openHistory() {
+  router.push('/diagnosis-history')
+}
 
-const diagnosisData = [
-  {
-    name: '흰가루병',
-    color: '#e94b5a',
-    percentage: 92.5,
-    cause: '고온 건조한 환경에서 발병',
-    occurrence: '잎 표면에 하얀 가루 형태로 나타남',
-    treatment: '발병 초기에 살균제를 살포하여 방제'
-  },
-  {
-    name: '갈색무늬병',
-    color: '#2d8a4f',
-    percentage: 73.8,
-    cause: '습도가 높은 환경에서 발병',
-    occurrence: '잎에 갈색 무늬가 생김',
-    treatment: '잎 앞뒤면에 충분히 묻도록 살포'
-  }
-]
+onMounted(() => {
+  loadCrops()
+})
+
+onBeforeUnmount(() => {
+  revokePreviewUrl()
+})
 </script>
 
 <template>
@@ -181,96 +201,77 @@ const diagnosisData = [
     <AppHeader />
     <NavTabs active="병해충 분석" />
 
-    <div v-if="!showResult" class="px-5 py-7 max-w-shell mx-auto">
-      <!-- Title -->
+    <div v-if="currentStep === 'upload'" class="px-5 py-7 max-w-shell mx-auto">
       <div class="mb-6 border-b border-gray-200 pb-5">
         <div class="text-gray-400 text-[13px] mb-1.5">병해충 분석</div>
-        <div class="text-[26px] font-bold text-gray-900 tracking-tight">AI 병해충 사진진단</div>
+        <div class="text-[26px] font-bold text-gray-900 tracking-tight">AI 병해충 이미지 진단</div>
       </div>
 
-      <!-- Consent box -->
       <div class="bg-white border border-gray-200 rounded-[10px] p-6 mb-6">
-        <div class="flex justify-between items-start gap-4">
-          <div class="flex-1 flex flex-col gap-2.5">
-            <div class="flex gap-2 text-[13px] text-gray-600 leading-relaxed">
-              <span class="text-brand flex-shrink-0">▪</span>
-              <span>해상도 1024×768 픽셀 이상의 사진으로 입력해 주세요. 저해상도 사진은 AI사진진단 정확도가 떨어집니다.</span>
-            </div>
-            <div class="flex gap-2 text-[13px] text-red-600 leading-relaxed font-medium">
-              <span class="flex-shrink-0">▪</span>
-              <span>본 진단결과는 참고용입니다. 오진의 가능성이 있으므로, 정확한 방제 처방은 전문가의 추가 검토가 필요합니다.</span>
-            </div>
-          </div>
-          
+        <div class="space-y-3 text-sm leading-relaxed">
+          <p class="text-gray-700">
+            선명한 작물 사진을 업로드하면 백엔드에서 이미지를 저장하고 AI 분석 결과를 함께 기록합니다.
+          </p>
+          <p class="text-amber-700 font-medium">
+            현재 MVP에서는 포도 작물만 실제 병해 분석이 수행되고, 다른 작물은 지원 준비 상태로 저장됩니다.
+          </p>
         </div>
 
-        <!-- Radio -->
         <div class="flex justify-center gap-8 mt-6 pt-5 border-t border-gray-100">
-          <div class="flex items-center gap-2 cursor-pointer" @click="agreed = true">
-            <div
-              class="w-[18px] h-[18px] rounded-full border-2 flex items-center justify-center"
-              :class="agreed === true ? 'border-[#ea580c]' : 'border-slate-300'"
-            >
-              <div v-if="agreed === true" class="w-[9px] h-[9px] rounded-full bg-[#ea580c]"></div>
-            </div>
-            <span
-              class="text-sm"
-              :class="agreed === true ? 'text-gray-900 font-medium' : 'text-gray-500'"
-              >동의합니다</span
-            >
-          </div>
-          <div class="flex items-center gap-2 cursor-pointer" @click="agreed = false">
-            <div
-              class="w-[18px] h-[18px] rounded-full border-2 flex items-center justify-center"
-              :class="agreed === false ? 'border-[#ea580c]' : 'border-slate-300'"
-            >
-              <div v-if="agreed === false" class="w-[9px] h-[9px] rounded-full bg-[#ea580c]"></div>
-            </div>
-            <span
-              class="text-sm"
-              :class="agreed === false ? 'text-gray-900 font-medium' : 'text-gray-500'"
-              >동의하지 않습니다</span
-            >
-          </div>
+          <button
+            class="flex items-center gap-2 text-sm"
+            :class="agreed === true ? 'text-gray-900 font-medium' : 'text-gray-500'"
+            @click="agreed = true"
+          >
+            <span class="w-4 h-4 rounded-full border-2 flex items-center justify-center" :class="agreed === true ? 'border-brand' : 'border-slate-300'">
+              <span v-if="agreed === true" class="w-2 h-2 rounded-full bg-brand"></span>
+            </span>
+            안내 내용을 확인했습니다
+          </button>
+          <button
+            class="flex items-center gap-2 text-sm"
+            :class="agreed === false ? 'text-gray-900 font-medium' : 'text-gray-500'"
+            @click="agreed = false"
+          >
+            <span class="w-4 h-4 rounded-full border-2 flex items-center justify-center" :class="agreed === false ? 'border-brand' : 'border-slate-300'">
+              <span v-if="agreed === false" class="w-2 h-2 rounded-full bg-brand"></span>
+            </span>
+            나중에 다시 확인할게요
+          </button>
         </div>
       </div>
 
-      <!-- Upload section -->
       <div class="bg-white border border-gray-200 rounded-[10px] p-6">
         <div class="text-center mb-5">
-          <span class="text-base font-bold text-gray-900">진단 요청사진</span>
-          <span class="text-[13px] text-gray-400 ml-2">- 사진진단 할 사진을 업로드 하세요.</span>
+          <span class="text-base font-bold text-gray-900">진단할 사진 업로드</span>
+          <span class="text-[13px] text-gray-400 ml-2">실제 분석 요청에 사용할 이미지를 선택해주세요.</span>
         </div>
 
         <div
           class="border-[1.5px] border-dashed rounded-[10px] p-12 text-center transition-all"
           :class="
             isDragOver
-              ? 'border-brand bg-brand bg-opacity-5'
-              : agreedYes
-              ? 'border-slate-300 bg-[#fafbfc] opacity-100'
+              ? 'border-brand bg-brand/5'
+              : agreed
+              ? 'border-slate-300 bg-[#fafbfc]'
               : 'border-gray-200 bg-gray-50 opacity-60'
           "
           @dragover="handleDragOver"
           @dragleave="handleDragLeave"
           @drop="handleDrop"
         >
-          <div
-            class="w-14 h-14 mx-auto mb-4 flex items-center justify-center bg-brand-light rounded-xl"
-          >
+          <div class="w-14 h-14 mx-auto mb-4 flex items-center justify-center bg-brand-light rounded-xl">
             <div class="w-[26px] h-[26px] border-2 border-brand rounded-md"></div>
           </div>
-          <div class="text-gray-600 text-sm mb-1">
-            AI 병해충 사진진단 할 사진을 여기에 끌어 놓거나
-          </div>
-          <div class="text-accent text-sm mb-5">사진찾기 버튼을 클릭하세요</div>
+          <div class="text-gray-600 text-sm mb-1">사진을 끌어다 놓거나 직접 파일을 선택해주세요.</div>
+          <div class="text-accent text-sm mb-5">JPG, PNG, WEBP 형식을 권장합니다.</div>
           <button
-            :disabled="!agreedYes"
+            :disabled="!agreed"
             class="px-6 py-2.5 text-white rounded-lg font-medium text-sm"
-            :class="agreedYes ? 'bg-accent cursor-pointer' : 'bg-slate-300 cursor-not-allowed'"
+            :class="agreed ? 'bg-accent cursor-pointer' : 'bg-slate-300 cursor-not-allowed'"
             @click="fileInput?.click()"
           >
-            사진찾기
+            사진 찾기
           </button>
           <input
             ref="fileInput"
@@ -281,190 +282,153 @@ const diagnosisData = [
           />
         </div>
 
-        <div v-if="agreed === false" class="text-center mt-4 text-[13px] text-red-600">
-          먼저 위 약관에 동의해 주세요.
-        </div>
+        <p v-if="agreed === false" class="text-center mt-4 text-[13px] text-red-600">
+          업로드 전에 안내 확인 여부를 선택해주세요.
+        </p>
+        <p v-if="submitError" class="text-center mt-4 text-[13px] text-red-600">
+          {{ submitError }}
+        </p>
       </div>
     </div>
 
-    <!-- 분류선택 화면 -->
-    <div v-if="showResult && !showDiagnosisResult" class="px-5 py-7 max-w-shell mx-auto">
+    <div v-else-if="currentStep === 'crop'" class="px-5 py-7 max-w-shell mx-auto">
       <div class="bg-white border border-gray-200 rounded-[10px] p-8">
-        <div class="grid grid-cols-[1fr_1fr] gap-8">
-          <!-- 왼쪽: 업로드된 사진 -->
+        <div class="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-8">
           <div>
             <img
-              :src="uploadedImage"
-              alt="진단 사진"
+              :src="previewUrl"
+              alt="업로드한 작물 이미지"
               class="w-full rounded-lg object-cover border border-gray-200"
               style="aspect-ratio: 4/3"
             />
           </div>
 
-          <!-- 오른쪽: 작물 선택 -->
-          <div class="flex flex-col justify-between">
+          <div class="flex flex-col justify-between gap-6">
             <div>
-              <!-- 제목 및 설명 -->
               <div class="mb-6">
-                <div class="text-[15px] font-bold text-gray-900 mb-2">분류선택</div>
-                <div class="text-sm text-gray-600">입로드한 사진의 작물을 선택 후 진단요청을 진행하세요.</div>
-              </div>
-
-              <!-- 작물 선택 그리드 -->
-              <div class="mb-6">
-                <div class="grid grid-cols-5 gap-3">
-                  <button
-                    v-for="crop in crops"
-                    :key="crop.id"
-                    @click="selectedCrop = crop.id"
-                    class="flex flex-col items-center gap-2 p-3 rounded-xl transition-colors border-2"
-                    :class="
-                      selectedCrop === crop.id
-                        ? 'bg-brand bg-opacity-10 border-brand'
-                        : 'border-gray-200 hover:border-gray-300'
-                    "
-                  >
-                    <div class="text-3xl">{{ crop.emoji }}</div>
-                    <div class="text-xs font-medium text-gray-700 text-center leading-tight">{{ crop.name }}</div>
-                  </button>
+                <div class="text-[15px] font-bold text-gray-900 mb-2">작물 선택</div>
+                <div class="text-sm text-gray-600">
+                  이미지와 가장 가까운 작물을 선택하면 해당 ID로 분석 API를 호출합니다.
                 </div>
               </div>
+
+              <div v-if="cropsLoading" class="text-sm text-gray-500">작물 목록을 불러오는 중입니다...</div>
+              <div v-else-if="cropsError" class="rounded-lg bg-rose-50 text-rose-700 text-sm p-4">
+                {{ cropsError }}
+              </div>
+              <div v-else class="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <button
+                  v-for="crop in crops"
+                  :key="crop.id"
+                  class="text-left p-4 rounded-xl transition-colors border-2"
+                  :class="
+                    selectedCropId === crop.id
+                      ? 'bg-brand/10 border-brand'
+                      : 'border-gray-200 hover:border-gray-300'
+                  "
+                  @click="selectedCropId = crop.id"
+                >
+                  <div class="text-sm font-semibold text-gray-900">{{ crop.name }}</div>
+                  <div class="text-xs text-gray-500 mt-1">{{ crop.category || '작물' }}</div>
+                </button>
+              </div>
+
+              <p class="text-xs text-gray-500 mt-4">
+                현재 백엔드 로직상 포도는 FastAPI 분석까지 진행되고, 그 외 작물도 업로드와 기록 저장은 정상적으로 수행됩니다.
+              </p>
             </div>
 
-            <!-- 액션 버튼 -->
-            <div class="flex gap-3">
-              <button
-                @click="resetToUpload"
-                class="flex-1 py-2.5 px-4 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-              >
-                처음으로
-              </button>
-              <button
-                @click="requestDiagnosis"
-                class="flex-1 py-2.5 px-4 bg-brand text-white rounded-lg text-sm font-medium hover:bg-opacity-90 transition-colors"
-              >
-                AI 진단 요청
-              </button>
+            <div>
+              <p v-if="submitError" class="mb-3 text-sm text-red-600">{{ submitError }}</p>
+              <div class="flex gap-3">
+                <button
+                  class="flex-1 py-2.5 px-4 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                  @click="resetToUpload"
+                >
+                  다시 업로드
+                </button>
+                <button
+                  class="flex-1 py-2.5 px-4 bg-brand text-white rounded-lg text-sm font-medium hover:bg-opacity-90 transition-colors disabled:bg-slate-300"
+                  :disabled="submitting || !selectedCropId"
+                  @click="requestDiagnosis"
+                >
+                  {{ submitting ? '분석 요청 중...' : 'AI 진단 요청' }}
+                </button>
+              </div>
             </div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- 진단 결과 화면 -->
-    <div v-if="showDiagnosisResult" class="px-5 py-7 max-w-shell mx-auto">
+    <div v-else class="px-5 py-7 max-w-shell mx-auto">
       <div class="bg-white border border-gray-200 rounded-[10px] p-8">
-        <!-- 제목 -->
-        <div class="mb-6">
-          <div class="text-[15px] font-bold text-gray-900 mb-2">병해충 진단을 완료하였습니다.</div>
+        <div class="flex flex-wrap items-center gap-3 mb-6">
+          <div class="text-[15px] font-bold text-gray-900">진단 결과</div>
+          <span class="px-3 py-1 rounded-full text-xs font-semibold" :class="resultBadgeClass">
+            {{ analysisResult.status }}
+          </span>
+          <span class="text-sm text-gray-500">{{ selectedCropName }}</span>
         </div>
 
-        <!-- 진단 결과 카드 -->
-        <div class="grid grid-cols-[1fr_1fr] gap-8 mb-8">
-          <!-- 왼쪽: 사진 -->
-          <div class="flex items-center justify-center">
+        <div class="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-8 mb-8">
+          <div>
             <img
-              :src="uploadedImage"
-              alt="진단 사진"
+              :src="previewUrl"
+              alt="분석한 이미지"
               class="w-full rounded-lg object-cover border border-gray-200"
               style="aspect-ratio: 4/3"
             />
           </div>
 
-          <!-- 오른쪽: 진단 결과 -->
-          <div>
-            <!-- 진단 결과 -->
-            <div class="mb-6">
-              <div class="space-y-4">
-                <div v-for="(data, idx) in diagnosisData" :key="idx">
-                  <div class="flex items-center justify-between mb-2">
-                    <div class="flex items-center gap-2">
-                      <div class="w-3 h-3 rounded-full" :style="{ backgroundColor: data.color }"></div>
-                      <span class="text-sm font-medium text-gray-900">{{ data.name }}</span>
-                    </div>
-                    <span class="text-sm font-bold text-gray-900">{{ data.percentage }}%</span>
-                  </div>
-                  <div class="w-full bg-gray-200 rounded-full h-1.5">
-                    <div class="h-1.5 rounded-full" :style="{ backgroundColor: data.color, width: data.percentage + '%' }"></div>
-                  </div>
+          <div class="space-y-4">
+            <div class="rounded-xl bg-slate-50 p-5">
+              <div class="text-xs text-gray-500 mb-2">분석 메시지</div>
+              <div class="text-sm text-gray-800 leading-relaxed">{{ analysisResult.message }}</div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+              <div class="rounded-xl border border-gray-200 p-5">
+                <div class="text-xs text-gray-500 mb-2">질환명</div>
+                <div class="text-base font-semibold text-gray-900">
+                  {{ analysisResult.diseaseName || '지원 준비 중' }}
                 </div>
+              </div>
+              <div class="rounded-xl border border-gray-200 p-5">
+                <div class="text-xs text-gray-500 mb-2">신뢰도</div>
+                <div class="text-base font-semibold text-gray-900">{{ confidenceText }}</div>
               </div>
             </div>
 
-            <!-- 버튼 -->
-            <div class="flex gap-3">
-              <button
-                @click="showDiagnosisResult = false"
-                class="flex-1 py-2.5 px-4 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-              >
-                처음으로
-              </button>
-              <button
-                class="flex-1 py-2.5 px-4 bg-gray-500 text-white rounded-lg text-sm font-medium hover:bg-opacity-90 transition-colors"
-              >
-                {{ selectedCrop ? crops.find(c => c.id === selectedCrop)?.name : '작물' }}
-              </button>
+            <div class="rounded-xl border border-gray-200 p-5">
+              <div class="text-xs text-gray-500 mb-2">요약</div>
+              <div class="text-sm text-gray-800 leading-relaxed">
+                {{ analysisResult.summary || '백엔드에 분석 기록이 저장되었습니다.' }}
+              </div>
+            </div>
+
+            <div class="rounded-xl border border-gray-200 p-5">
+              <div class="text-xs text-gray-500 mb-2">권장 조치</div>
+              <div class="text-sm text-gray-800 leading-relaxed">
+                {{ analysisResult.recommendation || '진단 이력 화면에서 저장된 결과를 다시 확인할 수 있습니다.' }}
+              </div>
             </div>
           </div>
         </div>
 
-        <!-- 상세 정보 -->
-        <div class="border-t border-gray-200 pt-8">
-          <!-- 병명 탭 -->
-          <div class="mb-8">
-            <div class="flex gap-3 mb-6">
-              <button
-                v-for="(data, idx) in diagnosisData"
-                :key="idx"
-                @click="selectedDiseaseTab = idx"
-                class="px-6 py-3 rounded-lg font-semibold text-sm transition-all border"
-                :class="
-                  selectedDiseaseTab === idx
-                    ? 'bg-brand text-white border-brand shadow-sm'
-                    : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300'
-                "
-              >
-                {{ data.name }}
-              </button>
-            </div>
-
-            <!-- 정보 종류 탭 -->
-            <div class="flex gap-3 mb-6">
-              <button
-                v-for="infoType in ['발병원인', '발병 정보', '방제 정보']"
-                :key="infoType"
-                @click="selectedInfoTab = infoType"
-                class="px-5 py-2 rounded-full font-medium text-sm transition-colors"
-                :class="
-                  selectedInfoTab === infoType
-                    ? 'bg-brand text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                "
-              >
-                {{ infoType }}
-              </button>
-            </div>
-
-            <!-- 선택된 정보 표시 -->
-            <div class="bg-gray-50 rounded-lg p-6">
-              <div class="space-y-3">
-                <div v-if="selectedInfoTab === '발병원인'" class="text-sm text-gray-700 leading-relaxed">
-                  <div class="font-medium text-gray-900 mb-2">{{ diagnosisData[selectedDiseaseTab].name }} 발병원인</div>
-                  <div>• {{ diagnosisData[selectedDiseaseTab].cause }}</div>
-                </div>
-
-                <div v-if="selectedInfoTab === '발병 정보'" class="text-sm text-gray-700 leading-relaxed">
-                  <div class="font-medium text-gray-900 mb-2">{{ diagnosisData[selectedDiseaseTab].name }} 발병 정보</div>
-                  <div>• {{ diagnosisData[selectedDiseaseTab].occurrence }}</div>
-                </div>
-
-                <div v-if="selectedInfoTab === '방제 정보'" class="text-sm text-gray-700 leading-relaxed">
-                  <div class="font-medium text-gray-900 mb-2">{{ diagnosisData[selectedDiseaseTab].name }} 방제 정보</div>
-                  <div>• {{ diagnosisData[selectedDiseaseTab].treatment }}</div>
-                </div>
-              </div>
-            </div>
-          </div>
+        <div class="flex flex-col sm:flex-row gap-3">
+          <button
+            class="flex-1 py-3 px-4 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+            @click="resetToUpload"
+          >
+            다른 이미지 업로드
+          </button>
+          <button
+            class="flex-1 py-3 px-4 bg-brand text-white rounded-lg text-sm font-medium hover:bg-opacity-90 transition-colors"
+            @click="openHistory"
+          >
+            진단 이력 보기
+          </button>
         </div>
       </div>
     </div>
