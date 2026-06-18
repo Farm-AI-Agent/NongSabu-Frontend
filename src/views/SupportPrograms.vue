@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import AppHeader from '../components/AppHeader.vue'
 import Sidebar from '../components/Sidebar.vue'
 import FloatingChatButton from '../components/FloatingChatButton.vue'
+import AppFooter from '../components/AppFooter.vue'
 import { useAuth } from '../composables/useAuth'
 
 const { userName } = useAuth()
@@ -176,7 +177,7 @@ function closeModal() {
     <AppHeader />
     <Sidebar />
 
-    <div class="px-5 py-7 mx-auto ml-64 pt-20">
+    <div class="px-5 py-7 mx-auto ml-64 pt-20 min-h-screen flex flex-col">
       <!-- Header -->
       <div class="mb-6 border-b border-gray-200 pb-5">
         <div class="text-gray-400 text-[13px] mb-1.5">지원사업 정보</div>
@@ -274,6 +275,8 @@ function closeModal() {
           </div>
         </div>
       </div>
+
+      <AppFooter />
     </div>
 
     <!-- Detail Modal -->

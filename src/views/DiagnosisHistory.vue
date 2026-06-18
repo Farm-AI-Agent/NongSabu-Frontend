@@ -3,7 +3,9 @@ import { onMounted, ref } from 'vue'
 import AppHeader from '../components/AppHeader.vue'
 import Sidebar from '../components/Sidebar.vue'
 import FloatingChatButton from '../components/FloatingChatButton.vue'
+import AppFooter from '../components/AppFooter.vue'
 import { ApiError, apiRequest } from '../lib/api'
+import { formatAnalysisText } from '../lib/analysisText'
 import { useAuth } from '../composables/useAuth'
 
 const { accessToken } = useAuth()
@@ -36,7 +38,7 @@ function translateStatus(status) {
     'FAILED': '실패',
     'PROCESSING': '분석 중',
   }
-  return statusMap[status] || status
+  return statusMap[status] || '상태 확인 중'
 }
 
 function translateSeverity(severity) {
@@ -46,7 +48,11 @@ function translateSeverity(severity) {
     'HIGH': '높음',
     'CRITICAL': '심각',
   }
-  return severityMap[severity] || severity
+  return severityMap[severity] || '미분류'
+}
+
+function displayAnalysisText(value, fallback) {
+  return formatAnalysisText(value, fallback)
 }
 
 async function loadHistory() {
@@ -100,7 +106,7 @@ onMounted(() => {
     <AppHeader />
     <Sidebar />
 
-    <div class="px-5 py-7 mx-auto ml-64 pt-20">
+    <div class="px-5 py-7 mx-auto ml-64 pt-20 min-h-screen flex flex-col">
       <div class="mb-6 border-b border-gray-200 pb-5">
         <div class="text-gray-400 text-[13px] mb-1.5">진단 이력</div>
         <div class="text-[26px] font-bold text-gray-900 tracking-tight">저장된 이미지 분석 기록</div>
@@ -131,7 +137,7 @@ onMounted(() => {
                 {{ record.cropName || '작물 정보 없음' }}
               </div>
               <div class="mt-1 text-sm text-gray-600">
-                {{ record.diseaseName || record.message }}
+                {{ displayAnalysisText(record.diseaseName || record.message, '분석 결과 대기') }}
               </div>
               <div class="mt-2 flex flex-wrap gap-2 text-xs">
                 <span class="px-2.5 py-1 rounded-full bg-slate-100 text-slate-700">{{ translateStatus(record.status) }}</span>
@@ -148,6 +154,8 @@ onMounted(() => {
           </div>
         </div>
       </div>
+
+      <AppFooter />
     </div>
 
     <div
@@ -178,7 +186,9 @@ onMounted(() => {
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div class="rounded-xl border border-gray-200 p-5">
                 <div class="text-xs text-gray-500 mb-2">질환명</div>
-                <div class="text-sm text-gray-900">{{ selected.diseaseName || '지원 준비 중' }}</div>
+                <div class="text-sm text-gray-900">
+                  {{ displayAnalysisText(selected.diseaseName, '지원 준비 중') }}
+                </div>
               </div>
               <div class="rounded-xl border border-gray-200 p-5">
                 <div class="text-xs text-gray-500 mb-2">심각도</div>
@@ -188,20 +198,22 @@ onMounted(() => {
 
             <div class="rounded-xl border border-gray-200 p-5">
               <div class="text-xs text-gray-500 mb-2">안내 메시지</div>
-              <div class="text-sm text-gray-800 leading-relaxed">{{ selected.message }}</div>
+              <div class="text-sm text-gray-800 leading-relaxed">
+                {{ displayAnalysisText(selected.message, '저장된 안내 메시지가 없습니다.') }}
+              </div>
             </div>
 
             <div class="rounded-xl border border-gray-200 p-5">
               <div class="text-xs text-gray-500 mb-2">요약</div>
               <div class="text-sm text-gray-800 leading-relaxed">
-                {{ selected.summary || '저장된 분석 결과가 없습니다.' }}
+                {{ displayAnalysisText(selected.summary, '저장된 분석 결과가 없습니다.') }}
               </div>
             </div>
 
             <div class="rounded-xl border border-gray-200 p-5">
               <div class="text-xs text-gray-500 mb-2">권장 조치</div>
               <div class="text-sm text-gray-800 leading-relaxed">
-                {{ selected.recommendation || '권장 조치 정보가 없습니다.' }}
+                {{ displayAnalysisText(selected.recommendation, '권장 조치 정보가 없습니다.') }}
               </div>
             </div>
 

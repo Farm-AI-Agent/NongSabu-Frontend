@@ -4,7 +4,9 @@ import { useRouter } from 'vue-router'
 import AppHeader from '../components/AppHeader.vue'
 import Sidebar from '../components/Sidebar.vue'
 import FloatingChatButton from '../components/FloatingChatButton.vue'
+import AppFooter from '../components/AppFooter.vue'
 import { ApiError, apiRequest } from '../lib/api'
+import { formatAnalysisText } from '../lib/analysisText'
 import { useAuth } from '../composables/useAuth'
 
 const router = useRouter()
@@ -44,11 +46,38 @@ const selectedCropName = computed(() => {
 })
 
 const confidenceText = computed(() => {
-  if (!analysisResult.value?.supported || !analysisResult.value?.confidence) {
+  if (analysisResult.value?.confidence === undefined || analysisResult.value?.confidence === null) {
     return '-'
   }
 
-  return `${(analysisResult.value.confidence * 100).toFixed(1)}%`
+  const confidence = Number(analysisResult.value.confidence)
+  const normalized = confidence > 1 ? confidence : confidence * 100
+  return Number.isFinite(normalized) ? `${normalized.toFixed(1)}%` : '-'
+})
+
+const diagnosisName = computed(() => {
+  return formatAnalysisText(
+    analysisResult.value?.diseaseName || analysisResult.value?.label || analysisResult.value?.prediction,
+    '분석 결과 대기',
+  )
+})
+
+const analysisMessage = computed(() => {
+  return formatAnalysisText(analysisResult.value?.message, '더미 모델 분석 응답을 받았습니다.')
+})
+
+const summaryText = computed(() => {
+  return formatAnalysisText(
+    analysisResult.value?.summary || analysisResult.value?.description,
+    '더미 모델 응답 또는 저장된 분석 기록에 요약 정보가 포함되지 않았습니다.',
+  )
+})
+
+const recommendationText = computed(() => {
+  return formatAnalysisText(
+    analysisResult.value?.recommendation || analysisResult.value?.action,
+    '권장 조치 정보가 응답에 포함되면 이 영역에 표시됩니다.',
+  )
 })
 
 const resultBadgeClass = computed(() => {
@@ -64,8 +93,6 @@ const resultBadgeClass = computed(() => {
   }
 })
 
-// 작물 선택지는 백엔드에서 받아옵니다.
-// 이렇게 하면 업로드 화면의 작물 ID와 분석 API가 기대하는 작물 ID를 동일하게 맞출 수 있습니다.
 async function loadCrops() {
   cropsLoading.value = true
   cropsError.value = ''
@@ -94,8 +121,6 @@ function revokePreviewUrl() {
   previewUrl.value = ''
 }
 
-// 현재 세션에서만 사용할 미리보기 URL을 로컬에 보관합니다.
-// 저장된 분석 이력은 이후 백엔드에서 다시 불러옵니다.
 function selectFile(file) {
   if (!file) {
     return
@@ -189,7 +214,7 @@ function translateStatus(status) {
     'FAILED': '분석 실패',
     'PROCESSING': '분석 중',
   }
-  return statusMap[status] || status
+  return statusMap[status] || '상태 확인 중'
 }
 
 function openHistory() {
@@ -211,7 +236,7 @@ onBeforeUnmount(() => {
     <AppHeader />
     <Sidebar />
 
-    <div v-if="currentStep === 'upload'" class="px-5 py-7 mx-auto ml-64 pt-20">
+    <div v-if="currentStep === 'upload'" class="px-5 py-7 mx-auto ml-64 pt-20 min-h-screen flex flex-col">
       <div class="mb-6 border-b border-gray-200 pb-5">
         <div class="text-gray-400 text-[13px] mb-1.5">병해충 분석</div>
         <div class="text-[26px] font-bold text-gray-900 tracking-tight">AI 병해충 이미지 진단</div>
@@ -223,7 +248,7 @@ onBeforeUnmount(() => {
             선명한 작물 사진을 업로드하면 백엔드에서 이미지를 저장하고 AI 분석 결과를 함께 기록합니다.
           </p>
           <p class="text-amber-700 font-medium">
-            현재 MVP에서는 포도 작물만 실제 병해 분석이 수행되고, 다른 작물은 지원 준비 상태로 저장됩니다.
+            현재 모델은 더미 모델 단계입니다. 응답 구조는 실제 분석 모델 연동을 기준으로 표시됩니다.
           </p>
         </div>
 
@@ -299,9 +324,11 @@ onBeforeUnmount(() => {
           {{ submitError }}
         </p>
       </div>
+
+      <AppFooter />
     </div>
 
-    <div v-else-if="currentStep === 'crop'" class="px-5 py-7 mx-auto ml-64 pt-20">
+    <div v-else-if="currentStep === 'crop'" class="px-5 py-7 mx-auto ml-64 pt-20 min-h-screen flex flex-col">
       <div class="bg-white border border-gray-200 rounded-[10px] p-8">
         <div class="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-8">
           <div>
@@ -344,7 +371,7 @@ onBeforeUnmount(() => {
               </div>
 
               <p class="text-xs text-gray-500 mt-4">
-                현재 백엔드 로직상 포도는 FastAPI 분석까지 진행되고, 그 외 작물도 업로드와 기록 저장은 정상적으로 수행됩니다.
+                선택한 작물 ID와 이미지를 그대로 백엔드 분석 API로 전달합니다.
               </p>
             </div>
 
@@ -369,9 +396,11 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </div>
+
+      <AppFooter />
     </div>
 
-    <div v-else class="px-5 py-7 mx-auto ml-64 pt-20">
+    <div v-else class="px-5 py-7 mx-auto ml-64 pt-20 min-h-screen flex flex-col">
       <div class="bg-white border border-gray-200 rounded-[10px] p-8">
         <div class="flex flex-wrap items-center gap-3 mb-6">
           <div class="text-[15px] font-bold text-gray-900">진단 결과</div>
@@ -394,14 +423,14 @@ onBeforeUnmount(() => {
           <div class="space-y-4">
             <div class="rounded-xl bg-slate-50 p-5">
               <div class="text-xs text-gray-500 mb-2">분석 메시지</div>
-              <div class="text-sm text-gray-800 leading-relaxed">{{ analysisResult.message }}</div>
+              <div class="text-sm text-gray-800 leading-relaxed">{{ analysisMessage }}</div>
             </div>
 
             <div class="grid grid-cols-2 gap-4">
               <div class="rounded-xl border border-gray-200 p-5">
                 <div class="text-xs text-gray-500 mb-2">질환명</div>
                 <div class="text-base font-semibold text-gray-900">
-                  {{ analysisResult.diseaseName || '지원 준비 중' }}
+                  {{ diagnosisName }}
                 </div>
               </div>
               <div class="rounded-xl border border-gray-200 p-5">
@@ -413,14 +442,14 @@ onBeforeUnmount(() => {
             <div class="rounded-xl border border-gray-200 p-5">
               <div class="text-xs text-gray-500 mb-2">요약</div>
               <div class="text-sm text-gray-800 leading-relaxed">
-                {{ analysisResult.summary || '백엔드에 분석 기록이 저장되었습니다.' }}
+                {{ summaryText }}
               </div>
             </div>
 
             <div class="rounded-xl border border-gray-200 p-5">
               <div class="text-xs text-gray-500 mb-2">권장 조치</div>
               <div class="text-sm text-gray-800 leading-relaxed">
-                {{ analysisResult.recommendation || '진단 이력 화면에서 저장된 결과를 다시 확인할 수 있습니다.' }}
+                {{ recommendationText }}
               </div>
             </div>
           </div>
@@ -441,6 +470,8 @@ onBeforeUnmount(() => {
           </button>
         </div>
       </div>
+
+      <AppFooter />
     </div>
 
     <FloatingChatButton />

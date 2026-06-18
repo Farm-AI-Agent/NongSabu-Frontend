@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppHeader from '../components/AppHeader.vue'
 import Sidebar from '../components/Sidebar.vue'
+import AppFooter from '../components/AppFooter.vue'
 import { ApiError, apiRequest } from '../lib/api'
 import { useAuth } from '../composables/useAuth'
 import { useFarmProfileState } from '../composables/useFarmProfileState'
@@ -421,7 +422,7 @@ onMounted(() => {
     <AppHeader />
     <Sidebar />
 
-    <div class="px-5 py-7 mx-auto ml-64 pt-20" style="max-width: 760px">
+    <div class="px-5 py-7 mx-auto ml-64 pt-20 min-h-screen flex flex-col" style="max-width: 760px">
       <div v-if="isLoading" class="bg-white border border-gray-200 rounded-xl p-7 text-sm text-gray-500">
         농장 프로필을 불러오는 중입니다...
       </div>
@@ -623,6 +624,8 @@ onMounted(() => {
           </button>
         </template>
       </template>
+
+      <AppFooter />
     </div>
 
     <!-- Region Selection Modal -->
@@ -719,11 +722,11 @@ onMounted(() => {
               <div class="space-y-4">
                 <div class="border-l-4 border-brand pl-4">
                   <h4 class="font-medium text-gray-900 mb-1">Q: 분석 결과는 얼마나 신뢰할 수 있나요?</h4>
-                  <p class="text-sm text-gray-600">A: 저희 AI 모델은 고도로 훈련된 이미지 분석 모델을 사용하며, 실제 농업 현장 데이터로 검증되었습니다. 다만 정확한 진단을 위해서는 선명한 이미지 업로드를 권장합니다.</p>
+                  <p class="text-sm text-gray-600">A: 현재 분석 모델은 더미 모델 단계입니다. 화면과 API 흐름은 실제 모델 연동을 기준으로 구성되어 있으며, 최종 진단 정확도는 모델 교체 후 다시 안내됩니다.</p>
                 </div>
                 <div class="border-l-4 border-brand pl-4">
                   <h4 class="font-medium text-gray-900 mb-1">Q: 지원하는 작물은 무엇인가요?</h4>
-                  <p class="text-sm text-gray-600">A: 현재 포도, 토마토, 딸기, 오이 등 주요 작물을 지원하고 있습니다. 더 많은 작물이 곧 추가될 예정입니다.</p>
+                  <p class="text-sm text-gray-600">A: 선택 가능한 작물 목록은 백엔드 작물 API 기준으로 표시됩니다. 실제 분석 지원 범위는 모델 연동 상태에 따라 달라질 수 있습니다.</p>
                 </div>
                 <div class="border-l-4 border-brand pl-4">
                   <h4 class="font-medium text-gray-900 mb-1">Q: 내 분석 데이터는 안전한가요?</h4>

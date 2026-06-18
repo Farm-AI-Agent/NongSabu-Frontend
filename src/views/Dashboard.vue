@@ -2,6 +2,7 @@
 import AppHeader from '../components/AppHeader.vue'
 import Sidebar from '../components/Sidebar.vue'
 import FloatingChatButton from '../components/FloatingChatButton.vue'
+import AppFooter from '../components/AppFooter.vue'
 import MetricCardGrid from '../components/MetricCardGrid.vue'
 import RecommendedProgramsCard from '../components/RecommendedProgramsCard.vue'
 import ChecklistCard from '../components/ChecklistCard.vue'
@@ -16,7 +17,7 @@ const { userName } = useAuth()
     <AppHeader />
     <Sidebar />
 
-    <div class="px-5 py-7 mx-auto ml-64 pt-20">
+    <div class="px-5 py-7 mx-auto ml-64 pt-20 min-h-screen flex flex-col">
       <!-- Greeting -->
       <div class="mb-6 border-b border-gray-200 pb-5">
         <div class="text-gray-400 text-[13px] mb-1.5">좋은 아침이에요, {{ userName }} 님</div>
@@ -36,6 +37,8 @@ const { userName } = useAuth()
           <ChecklistCard />
         </div>
       </div>
+
+      <AppFooter />
     </div>
 
     <FloatingChatButton />

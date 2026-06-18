@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import AppHeader from '../components/AppHeader.vue'
 import Sidebar from '../components/Sidebar.vue'
 import FloatingChatButton from '../components/FloatingChatButton.vue'
+import AppFooter from '../components/AppFooter.vue'
 
 const favorites = ref([])
 
@@ -36,7 +37,7 @@ onMounted(() => {
     <AppHeader />
     <Sidebar />
 
-    <div class="px-5 py-7 mx-auto ml-64 pt-20">
+    <div class="px-5 py-7 mx-auto ml-64 pt-20 min-h-screen flex flex-col">
       <div class="mb-6 border-b border-gray-200 pb-5">
         <div class="text-gray-400 text-[13px] mb-1.5">관심 지원사업</div>
         <div class="text-[26px] font-bold text-gray-900 tracking-tight">내가 찜한 지원사업</div>
@@ -79,6 +80,8 @@ onMounted(() => {
           </div>
         </div>
       </div>
+
+      <AppFooter />
     </div>
 
     <FloatingChatButton />

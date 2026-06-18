@@ -2,6 +2,7 @@
 import { reactive, ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
+import AppFooter from '../components/AppFooter.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -164,6 +165,10 @@ async function onSubmit() {
 
         <div class="text-center text-xs text-gray-400 mt-5">{{ footerText }}</div>
       </div>
+    </div>
+
+    <div class="max-w-[760px] w-full mx-auto px-5">
+      <AppFooter />
     </div>
   </div>
 </template>
