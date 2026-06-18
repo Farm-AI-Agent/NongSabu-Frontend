@@ -67,11 +67,15 @@ async function onSubmit() {
   isSubmitting.value = true
 
   try {
+    const redirectPath = typeof route.query.redirect === 'string' ? route.query.redirect : '/'
+
     if (isLogin.value) {
       await login({
         email: form.email,
         password: form.password,
       })
+
+      router.push(redirectPath)
     } else {
       await signup({
         name: form.name,
@@ -83,10 +87,12 @@ async function onSubmit() {
         email: form.email,
         password: form.password,
       })
-    }
 
-    const redirectPath = typeof route.query.redirect === 'string' ? route.query.redirect : '/'
-    router.push(redirectPath)
+      router.push({
+        name: 'policy-onboarding',
+        query: { redirect: redirectPath },
+      })
+    }
   } catch (error) {
     errorMessage.value = error?.message || '인증 요청 처리 중 오류가 발생했습니다.'
   } finally {
