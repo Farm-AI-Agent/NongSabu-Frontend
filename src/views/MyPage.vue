@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import AppHeader from '../components/AppHeader.vue'
 import Sidebar from '../components/Sidebar.vue'
 import AppFooter from '../components/AppFooter.vue'
+import RegionPickerModal from '../components/RegionPickerModal.vue'
 import { ApiError, apiRequest } from '../lib/api'
 import { useAuth } from '../composables/useAuth'
 import { useFarmProfileState } from '../composables/useFarmProfileState'
@@ -57,49 +58,10 @@ const errorMessage = ref('')
 const successMessage = ref('')
 
 const showRegionModal = ref(false)
-const selectedProvince = ref(null)
 const crops = ref([])
 const persistedUserCrops = ref([])
 const showInfoModal = ref(false)
 const infoModalType = ref(null) // 'support' 또는 'policy'
-
-const provinces = [
-  '서울',
-  '부산',
-  '대구',
-  '인천',
-  '광주',
-  '대전',
-  '울산',
-  '경기',
-  '강원',
-  '충북',
-  '충남',
-  '전북',
-  '전남',
-  '경북',
-  '경남',
-  '제주',
-]
-
-const citiesByProvince = {
-  '서울': ['강남구', '강동구', '강북구', '강서구', '관악구', '광진구', '구로구', '금천구', '노원구', '도봉구', '동대문구', '동작구', '마포구', '서대문구', '서초구', '성동구', '성북구', '송파구', '영등포구', '용산구', '은평구', '종로구', '중구', '중랑구', '양천구'],
-  '부산': ['중구', '서구', '동구', '영도구', '부산진구', '동래구', '남구', '북구', '해운대구', '사하구', '금정구', '강서구', '연제구', '수영구', '사상구'],
-  '대구': ['중구', '동구', '서구', '남구', '북구', '수성구', '달서구'],
-  '인천': ['중구', '동구', '미추홀구', '연수구', '남동구', '부평구', '계양구', '서구'],
-  '광주': ['동구', '서구', '남구', '북구', '광산구'],
-  '대전': ['대전'],
-  '울산': ['중구', '남구', '동구', '북구', '울주군'],
-  '경기': ['수원', '성남', '의정부', '안양', '부천', '광명', '평택', '동두천', '안산', '고양', '과천', '구리', '남양주', '오산', '시흥', '군포', '의왕', '하남', '여주', '이천', '광주', '양주', '포천', '김포', '화성', '용인'],
-  '강원': ['춘천', '원주', '강릉', '동해', '태백', '속초', '삼척', '홍천', '횡성', '영월', '평창', '정선', '철원', '화천', '양구', '인제', '고성', '양양'],
-  '충북': ['청주', '충주', '제천', '음성', '영동', '진천', '괴산', '증평', '단양'],
-  '충남': ['천안', '공주', '보령', '아산', '서산', '논산', '계룡', '당진', '금산', '부여', '서천', '청양', '예산', '태안'],
-  '전북': ['전주', '군산', '익산', '남원', '김제', '완주', '진안', '무주', '장수', '임실', '순창', '고창', '부안'],
-  '전남': ['목포', '여수', '순천', '나주', '광양', '담양', '곡성', '구례', '고흥', '보성', '화순', '장흥', '강진', '해남', '영암', '무안', '함평', '영광', '완도', '진도', '신안'],
-  '경북': ['포항', '경주', '김천', '안동', '구미', '영천', '영주', '상주', '문경', '예천', '봉화', '울진', '울릉'],
-  '경남': ['창원', '마산', '진해', '통영', '사천', '김해', '밀양', '거제', '남해', '하동', '산청', '함양', '거창', '합천'],
-  '제주': ['제주시', '서귀포시'],
-}
 
 const profile = reactive({
   name: '',
@@ -248,26 +210,15 @@ function startEdit() {
 
 function openRegionModal() {
   showRegionModal.value = true
-  selectedProvince.value = null
 }
 
 function closeRegionModal() {
   showRegionModal.value = false
-  selectedProvince.value = null
 }
 
-function selectProvince(province) {
-  selectedProvince.value = province
-}
-
-function selectCity(city) {
-  const province = selectedProvince.value
-  profile.region = `${province} ${city}`
+function selectRegion(region) {
+  profile.region = region
   closeRegionModal()
-}
-
-function goBackToProvince() {
-  selectedProvince.value = null
 }
 
 async function syncUserCrops(token) {
@@ -663,76 +614,11 @@ onMounted(() => {
       <AppFooter />
     </div>
 
-    <!-- Region Selection Modal -->
-    <div v-if="showRegionModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div class="bg-white rounded-xl shadow-lg w-full max-w-sm mx-4">
-        <!-- Province Selection Screen -->
-        <template v-if="!selectedProvince">
-          <div class="p-6 border-b border-gray-200">
-            <h2 class="text-lg font-bold text-gray-900">도 선택</h2>
-          </div>
-          <div class="p-6 max-h-[60vh] overflow-y-auto">
-            <div class="grid grid-cols-3 gap-3">
-              <button
-                v-for="province in provinces"
-                :key="province"
-                @click="selectProvince(province)"
-                class="px-4 py-3 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-brand hover:text-white hover:border-brand transition-colors"
-              >
-                {{ province }}
-              </button>
-            </div>
-          </div>
-          <div class="p-4 border-t border-gray-200 flex justify-end">
-            <button
-              @click="closeRegionModal"
-              class="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              닫기
-            </button>
-          </div>
-        </template>
-
-        <!-- City Selection Screen -->
-        <template v-else>
-          <div class="p-6 border-b border-gray-200 flex items-center justify-between">
-            <h2 class="text-lg font-bold text-gray-900">{{ selectedProvince }} 선택</h2>
-            <button
-              @click="goBackToProvince"
-              class="text-2xl leading-none text-gray-500 hover:text-gray-700 bg-transparent border-none cursor-pointer"
-            >
-              ‹
-            </button>
-          </div>
-          <div class="p-6 max-h-[60vh] overflow-y-auto">
-            <div class="grid grid-cols-2 gap-3">
-              <button
-                v-for="city in citiesByProvince[selectedProvince]"
-                :key="city"
-                @click="selectCity(city)"
-                class="px-4 py-3 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-brand hover:text-white hover:border-brand transition-colors"
-              >
-                {{ city }}
-              </button>
-            </div>
-          </div>
-          <div class="p-4 border-t border-gray-200 flex justify-between">
-            <button
-              @click="goBackToProvince"
-              class="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              이전
-            </button>
-            <button
-              @click="closeRegionModal"
-              class="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              닫기
-            </button>
-          </div>
-        </template>
-      </div>
-    </div>
+    <RegionPickerModal
+      v-if="showRegionModal"
+      @close="closeRegionModal"
+      @select="selectRegion"
+    />
 
     <!-- Info Modal (Support & Policy) -->
     <div v-if="showInfoModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">

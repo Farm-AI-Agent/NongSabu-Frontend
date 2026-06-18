@@ -3,7 +3,7 @@ import AppHeader from '../components/AppHeader.vue'
 import Sidebar from '../components/Sidebar.vue'
 import FloatingChatButton from '../components/FloatingChatButton.vue'
 import AppFooter from '../components/AppFooter.vue'
-import MetricCardGrid from '../components/MetricCardGrid.vue'
+import WeatherFarmBriefingCard from '../components/WeatherFarmBriefingCard.vue'
 import RecommendedProgramsCard from '../components/RecommendedProgramsCard.vue'
 import ChecklistCard from '../components/ChecklistCard.vue'
 import { useAuth } from '../composables/useAuth'
@@ -24,7 +24,7 @@ const { userName } = useAuth()
         <div class="text-[26px] font-bold text-gray-900 tracking-tight">오늘의 농장 현황</div>
       </div>
 
-      <MetricCardGrid />
+      <WeatherFarmBriefingCard />
 
       <div
         class="grid gap-4 mb-6 auto-rows-fr"
