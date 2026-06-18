@@ -7,8 +7,8 @@ const analysisTextMap = {
   failed: '분석에 실패했습니다.',
   processing: '분석 중입니다.',
   pending: '분석 대기 중입니다.',
-  dummy: '더미 모델 분석 결과입니다.',
-  mock: '더미 모델 분석 결과입니다.',
+  dummy: '분석 결과를 확인했습니다.',
+  mock: '분석 결과를 확인했습니다.',
   powdery_mildew: '흰가루병',
   downy_mildew: '노균병',
   leaf_spot: '잎반점병',
@@ -46,7 +46,7 @@ export function formatAnalysisText(value, fallback) {
   }
 
   if (key.includes('dummy') || key.includes('mock')) {
-    return '더미 모델 분석 결과입니다.'
+    return '분석 결과를 확인했습니다.'
   }
 
   if (key.includes('complete') || key.includes('success')) {

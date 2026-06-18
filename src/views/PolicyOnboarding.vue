@@ -1,12 +1,15 @@
 <script setup>
 import { computed, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import RegionPickerModal from '../components/RegionPickerModal.vue'
 import { useAuth } from '../composables/useAuth'
-import { fetchPolicyPrograms, savePolicyOnboarding } from '../lib/policyApi'
+import { useFarmProfileState } from '../composables/useFarmProfileState'
+import { fetchPolicyPrograms, savePolicyOnboarding, syncPolicyOnboardingToUserProfile } from '../lib/policyApi'
 
 const route = useRoute()
 const router = useRouter()
 const { accessToken } = useAuth()
+const { setFarmLocation } = useFarmProfileState()
 
 const STORAGE_KEY = 'fd_policy_onboarding_draft'
 
@@ -21,6 +24,8 @@ const secondaryCropCustom = ref('')
 const receivedPolicySearch = ref('')
 const receivedPolicyCustom = ref('')
 const policyOptions = ref([])
+const activeRegionKey = ref('')
+const showRegionModal = ref(false)
 
 const answers = reactive({
   age: '',
@@ -104,15 +109,15 @@ const questions = [
     key: 'residence_region',
     title: '거주 지역은 어디인가요?',
     description: '거주지 기준으로 제한되는 지자체 정책을 찾습니다.',
-    type: 'text',
-    placeholder: '예: 서울 강남구',
+    type: 'region',
+    placeholder: '지역을 선택해주세요',
   },
   {
     key: 'farmland_region',
     title: '농지 지역은 어디인가요?',
     description: '농지 소재지 기준으로 신청 가능한 지역 정책을 찾습니다.',
-    type: 'text',
-    placeholder: '예: 경기 이천시',
+    type: 'region',
+    placeholder: '지역을 선택해주세요',
   },
   {
     key: 'primary_crop_name',
@@ -306,6 +311,24 @@ function skipQuestion() {
   goNext()
 }
 
+function openRegionPicker(key) {
+  activeRegionKey.value = key
+  showRegionModal.value = true
+}
+
+function closeRegionPicker() {
+  showRegionModal.value = false
+  activeRegionKey.value = ''
+}
+
+function selectRegion(region) {
+  if (activeRegionKey.value) {
+    answers[activeRegionKey.value] = region
+  }
+
+  closeRegionPicker()
+}
+
 function splitTextList(value) {
   return String(value)
     .split(/[,\n]/)
@@ -359,6 +382,12 @@ function buildPayload() {
 
 function finishLocally(payload) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
+  const location = payload.farmland_region || payload.residence_region
+
+  if (location) {
+    setFarmLocation(location)
+  }
+
   router.push(typeof route.query.redirect === 'string' ? route.query.redirect : '/support-programs')
 }
 
@@ -367,16 +396,29 @@ async function submitOnboarding() {
   errorMessage.value = ''
 
   const payload = buildPayload()
+  const location = payload.farmland_region || payload.residence_region
 
   try {
     const result = await savePolicyOnboarding(payload, accessToken.value)
     savedEndpoint.value = result.endpoint
     localStorage.removeItem(STORAGE_KEY)
-    router.push(typeof route.query.redirect === 'string' ? route.query.redirect : '/support-programs')
   } catch (error) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
     console.warn('정책 온보딩 저장 실패:', error)
-    finishLocally(payload)
+  }
+
+  try {
+    await syncPolicyOnboardingToUserProfile(payload, accessToken.value)
+  } catch (error) {
+    console.warn('정책 온보딩 농장 프로필 반영 실패:', error)
+  }
+
+  if (location) {
+    setFarmLocation(location)
+  }
+
+  try {
+    router.push(typeof route.query.redirect === 'string' ? route.query.redirect : '/support-programs')
   } finally {
     isSaving.value = false
   }
@@ -482,6 +524,16 @@ loadPolicyOptions()
                   :placeholder="currentQuestion.placeholder"
                   class="w-full px-4 py-4 border border-gray-300 rounded-xl text-lg outline-none focus:border-brand"
                 />
+
+                <button
+                  v-else-if="currentQuestion.type === 'region'"
+                  type="button"
+                  class="w-full px-4 py-4 border border-gray-300 rounded-xl text-lg text-left outline-none hover:border-brand focus:border-brand bg-white transition-colors"
+                  :class="answers[currentQuestion.key] ? 'text-gray-900' : 'text-gray-400'"
+                  @click="openRegionPicker(currentQuestion.key)"
+                >
+                  {{ answers[currentQuestion.key] || currentQuestion.placeholder }}
+                </button>
 
                 <div v-else-if="currentQuestion.type === 'crop-single'" class="space-y-4">
                   <div class="grid grid-cols-2 gap-2">
@@ -669,6 +721,12 @@ loadPolicyOptions()
         </div>
       </section>
     </main>
+
+    <RegionPickerModal
+      v-if="showRegionModal"
+      @close="closeRegionPicker"
+      @select="selectRegion"
+    />
   </div>
 </template>
 

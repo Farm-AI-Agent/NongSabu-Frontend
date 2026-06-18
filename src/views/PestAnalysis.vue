@@ -51,6 +51,7 @@ const isDragOver = ref(false)
 const crops = ref([])
 const cropsLoading = ref(false)
 const cropsError = ref('')
+const cropSearch = ref('')
 
 const selectedFile = ref(null)
 const previewUrl = ref('')
@@ -76,6 +77,16 @@ const selectedCropName = computed(() => {
   const crop = crops.value.find((item) => item.id === selectedCropId.value)
   return crop?.name || analysisResult.value?.cropName || ''
 })
+const filteredCrops = computed(() => {
+  const keyword = cropSearch.value.trim().toLowerCase()
+  const sortedCrops = [...crops.value].sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ko'))
+
+  if (!keyword) {
+    return sortedCrops
+  }
+
+  return sortedCrops.filter((crop) => String(crop.name || '').toLowerCase().includes(keyword))
+})
 
 const confidenceText = computed(() => {
   if (analysisResult.value?.confidence === undefined || analysisResult.value?.confidence === null) {
@@ -95,13 +106,13 @@ const diagnosisName = computed(() => {
 })
 
 const analysisMessage = computed(() => {
-  return formatAnalysisText(analysisResult.value?.message, '더미 모델 분석 응답을 받았습니다.')
+  return formatAnalysisText(analysisResult.value?.message, '분석 결과를 확인했습니다.')
 })
 
 const summaryText = computed(() => {
   return formatAnalysisText(
     analysisResult.value?.summary || analysisResult.value?.description,
-    '더미 모델 응답 또는 저장된 분석 기록에 요약 정보가 포함되지 않았습니다.',
+    '요약 정보가 응답에 포함되지 않았습니다.',
   )
 })
 
@@ -130,9 +141,10 @@ async function loadCrops() {
   cropsError.value = ''
 
   try {
-    crops.value = await apiRequest('/api/v1/crops', {
+    const response = await apiRequest('/api/v1/crops', {
       token: accessToken.value || undefined,
     })
+    crops.value = normalizeCropList(response)
   } catch (error) {
     cropsError.value = resolveErrorMessage(error, '작물 목록을 불러오지 못했습니다.')
   } finally {
@@ -142,6 +154,46 @@ async function loadCrops() {
 
 function resolveErrorMessage(error, fallback) {
   return error instanceof ApiError ? error.message : fallback
+}
+
+function asArray(value) {
+  if (!value) return []
+  if (Array.isArray(value)) return value
+  if (Array.isArray(value.content)) return value.content
+  if (Array.isArray(value.items)) return value.items
+  if (Array.isArray(value.crops)) return value.crops
+  return []
+}
+
+function pick(...values) {
+  return values.find((value) => value !== undefined && value !== null && value !== '') ?? ''
+}
+
+function normalizeCropList(value) {
+  return asArray(value)
+    .map((crop, index) => ({
+      ...crop,
+      id: crop.id ?? crop.cropId ?? crop.crop_id ?? index,
+      name: pick(crop.name, crop.cropName, crop.crop_name, crop.label, `작물 #${crop.id ?? index}`),
+    }))
+    .filter((crop) => crop.id !== undefined && crop.name)
+}
+
+function normalizeAnalysisResult(response) {
+  const source = response?.analysisResult || response?.analysis_result || response?.result || response?.prediction || response || {}
+
+  return {
+    ...response,
+    ...source,
+    status: pick(source.status, response?.status, 'COMPLETED'),
+    cropName: pick(source.cropName, source.crop_name, response?.cropName, selectedCropName.value),
+    diseaseName: pick(source.diseaseName, source.disease_name, source.diagnosisName, source.diagnosis_name, source.className, source.class_name, source.label, source.prediction),
+    confidence: pick(source.confidence, source.confidenceScore, source.confidence_score, source.probability, source.score),
+    message: pick(source.message, source.resultMessage, source.result_message, response?.message),
+    summary: pick(source.summary, source.description, source.overview, source.explanation),
+    recommendation: pick(source.recommendation, source.recommendations, source.action, source.treatment, source.treatmentGuide, source.treatment_guide),
+    severity: pick(source.severity, response?.severity),
+  }
 }
 
 function revokePreviewUrl() {
@@ -227,11 +279,12 @@ async function requestDiagnosis() {
   formData.append('file', selectedFile.value)
 
   try {
-    analysisResult.value = await apiRequest('/api/v1/analysis/images', {
+    const response = await apiRequest('/api/v1/analysis/images', {
       method: 'POST',
       body: formData,
       token: accessToken.value,
     })
+    analysisResult.value = normalizeAnalysisResult(response)
   } catch (error) {
     submitError.value = resolveErrorMessage(error, '이미지 분석 요청에 실패했습니다.')
   } finally {
@@ -279,8 +332,8 @@ onBeforeUnmount(() => {
           <p class="text-gray-700">
             선명한 작물 사진을 업로드하면 백엔드에서 이미지를 저장하고 AI 분석 결과를 함께 기록합니다.
           </p>
-          <p class="text-amber-700 font-medium">
-            현재 모델은 더미 모델 단계입니다. 응답 구조는 실제 분석 모델 연동을 기준으로 표시됩니다.
+          <p class="text-emerald-700 font-medium">
+            업로드한 이미지는 실제 분석 모델 API로 전달되며, 내려온 진단 결과를 그대로 표시합니다.
           </p>
         </div>
 
@@ -327,8 +380,12 @@ onBeforeUnmount(() => {
           @dragleave="handleDragLeave"
           @drop="handleDrop"
         >
-          <div class="w-14 h-14 mx-auto mb-4 flex items-center justify-center bg-brand-light rounded-xl">
-            <div class="w-[26px] h-[26px] border-2 border-brand rounded-md"></div>
+          <div class="w-16 h-16 mx-auto mb-4 flex items-center justify-center bg-white border border-brand-border rounded-2xl shadow-sm">
+            <svg viewBox="0 0 48 48" class="w-9 h-9 text-brand" fill="none" aria-hidden="true">
+              <path d="M15 16l3-5h12l3 5h5a4 4 0 014 4v16a4 4 0 01-4 4H10a4 4 0 01-4-4V20a4 4 0 014-4h5z" stroke="currentColor" stroke-width="3" stroke-linejoin="round" />
+              <circle cx="24" cy="28" r="8" stroke="currentColor" stroke-width="3" />
+              <path d="M34 22h2" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
+            </svg>
           </div>
           <div class="text-gray-600 text-sm mb-1">사진을 끌어다 놓거나 직접 파일을 선택해주세요.</div>
           <div class="text-accent text-sm mb-5">JPG, PNG, WEBP 형식을 권장합니다.</div>
@@ -385,23 +442,36 @@ onBeforeUnmount(() => {
               <div v-else-if="cropsError" class="rounded-lg bg-rose-50 text-rose-700 text-sm p-4">
                 {{ cropsError }}
               </div>
-              <div v-else class="grid grid-cols-2 md:grid-cols-3 gap-3">
-                <button
-                  v-for="crop in crops"
-                  :key="crop.id"
-                  class="flex flex-col items-center gap-2 p-3 rounded-xl transition-colors border-2"
-                  :class="
-                    selectedCropId === crop.id
-                      ? 'bg-brand/10 border-brand'
-                      : 'border-gray-200 hover:border-gray-300'
-                  "
-                  @click="selectedCropId = crop.id"
-                >
-                  <div class="w-16 h-16 rounded-full bg-gradient-to-br from-yellow-50 to-green-50 flex items-center justify-center text-4xl shadow-sm">
-                    {{ getCropEmoji(crop.name) }}
+              <div v-else>
+                <input
+                  v-model.trim="cropSearch"
+                  type="text"
+                  placeholder="작물 이름 검색"
+                  class="w-full mb-4 px-4 py-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                />
+                <div class="max-h-[520px] overflow-y-auto pr-1">
+                  <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
+                    <button
+                      v-for="crop in filteredCrops"
+                      :key="crop.id"
+                      class="flex flex-col items-center gap-2 p-3 rounded-xl transition-colors border-2 min-h-[120px]"
+                      :class="
+                        selectedCropId === crop.id
+                          ? 'bg-brand/10 border-brand'
+                          : 'border-gray-200 hover:border-gray-300'
+                      "
+                      @click="selectedCropId = crop.id"
+                    >
+                      <div class="w-14 h-14 rounded-full bg-gradient-to-br from-yellow-50 to-green-50 flex items-center justify-center text-3xl shadow-sm">
+                        {{ getCropEmoji(crop.name) }}
+                      </div>
+                      <div class="text-sm font-semibold text-gray-900 text-center leading-tight">{{ crop.name }}</div>
+                    </button>
                   </div>
-                  <div class="text-sm font-semibold text-gray-900 text-center">{{ crop.name }}</div>
-                </button>
+                  <div v-if="!filteredCrops.length" class="rounded-lg bg-slate-50 p-5 text-sm text-gray-500 text-center">
+                    검색된 작물이 없습니다.
+                  </div>
+                </div>
               </div>
 
               <p class="text-xs text-gray-500 mt-4">

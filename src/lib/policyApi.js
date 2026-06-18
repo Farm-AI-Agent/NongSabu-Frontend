@@ -59,6 +59,27 @@ function pick(...values) {
   return values.find((value) => value !== undefined && value !== null && value !== '') ?? ''
 }
 
+async function requestOrNull(path, options) {
+  try {
+    return await apiRequest(path, options)
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      return null
+    }
+
+    throw error
+  }
+}
+
+async function requestArrayOrEmpty(path, options) {
+  try {
+    return (await requestOrNull(path, options)) || []
+  } catch (error) {
+    console.warn(`${path} 목록을 불러오지 못했습니다.`, error)
+    return []
+  }
+}
+
 function normalizeList(value) {
   if (!value) return []
   if (Array.isArray(value)) return value.filter(Boolean).map(String)
@@ -110,6 +131,28 @@ export function parseDateValue(value) {
   if (!value) return Number.MAX_SAFE_INTEGER
 
   const text = String(value).trim()
+  const lowerText = text.toLowerCase()
+
+  if (/상시|연중|수시|예산|소진|미정|별도/.test(text)) {
+    return Number.MAX_SAFE_INTEGER
+  }
+
+  const dDayMatch = lowerText.match(/d\s*-\s*(\d+)/)
+  if (dDayMatch) {
+    const date = new Date()
+    date.setDate(date.getDate() + Number(dDayMatch[1]))
+    date.setHours(23, 59, 59, 999)
+    return date.getTime()
+  }
+
+  const compactDateMatches = [...text.matchAll(/(20\d{2})[.-/]?(\d{1,2})[.-/]?(\d{1,2})/g)]
+  const compactDateMatch = compactDateMatches.at(-1)
+  if (compactDateMatch) {
+    const [, year, month, day] = compactDateMatch
+    const timestamp = Date.parse(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`)
+    return Number.isNaN(timestamp) ? Number.MAX_SAFE_INTEGER : timestamp
+  }
+
   const normalized = text
     .replace(/년|\.|\//g, '-')
     .replace(/월/g, '-')
@@ -120,6 +163,71 @@ export function parseDateValue(value) {
 
   const timestamp = Date.parse(normalized)
   return Number.isNaN(timestamp) ? Number.MAX_SAFE_INTEGER : timestamp
+}
+
+function formatCultivationArea(value) {
+  const num = Number(value)
+
+  if (!num || num <= 0 || Number.isNaN(num)) {
+    return ''
+  }
+
+  const pyeong = Math.round((num / 3.3058) * 100) / 100
+  return `${num}제곱미터 (${pyeong}평)`
+}
+
+function normalizeCropName(value) {
+  return String(value || '').replace(/\s+/g, '').toLowerCase()
+}
+
+function findCropByName(cropList, cropName) {
+  const normalizedName = normalizeCropName(cropName)
+
+  if (!normalizedName) {
+    return null
+  }
+
+  return cropList.find((crop) => normalizeCropName(crop.name) === normalizedName) || null
+}
+
+async function saveFarmProfile(token, payload) {
+  try {
+    return await apiRequest('/api/v1/farm-profiles/me', {
+      method: 'PUT',
+      token,
+      body: payload,
+    })
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 404) {
+      throw error
+    }
+
+    return apiRequest('/api/v1/farm-profiles/me', {
+      method: 'POST',
+      token,
+      body: payload,
+    })
+  }
+}
+
+async function saveFarm(token, payload) {
+  try {
+    return await apiRequest('/api/v1/farms/me', {
+      method: 'PUT',
+      token,
+      body: payload,
+    })
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 404) {
+      throw error
+    }
+
+    return apiRequest('/api/v1/farms/me', {
+      method: 'POST',
+      token,
+      body: payload,
+    })
+  }
 }
 
 export function normalizePolicyProgram(program, index = 0) {
@@ -140,9 +248,12 @@ export function normalizePolicyProgram(program, index = 0) {
     description: pick(program.description, program.summary, program.content, program.overview, '상세 설명이 없습니다.'),
     requirements: normalizeList(pick(program.requirements, program.eligibility, program.condition, program.conditions)),
     benefits: normalizeList(pick(program.benefits, program.supportDetails, program.support_details, program.details)),
+    recommendationReason: pick(program.recommendationReason, program.recommendation_reason, program.matchReason, program.match_reason, program.reason),
+    matchedCriteria: normalizeList(pick(program.matchedCriteria, program.matched_criteria, program.matchingFactors, program.matching_factors, program.matchedReasons)),
     contact: pick(program.contact, program.contactInfo, program.contact_info, program.department, '문의처 정보 없음'),
     applicationUrl: pick(program.applicationUrl, program.application_url, program.url, program.sourceUrl, program.source_url),
     original: program,
+    sortIndex: index,
     liked: false,
   }
 }
@@ -187,4 +298,70 @@ export async function savePolicyOnboarding(payload, token) {
     code: lastError?.code || 'POLICY_ONBOARDING_API_NOT_FOUND',
     payload: lastError?.payload || null,
   })
+}
+
+export async function syncPolicyOnboardingToUserProfile(payload, token) {
+  if (!token) {
+    return { synced: false, reason: 'NO_TOKEN' }
+  }
+
+  const [farm, farmProfile, userCrops, cropList] = await Promise.all([
+    requestOrNull('/api/v1/farms/me', { token }),
+    requestOrNull('/api/v1/farm-profiles/me', { token }),
+    requestArrayOrEmpty('/api/v1/user-crops/me', { token }),
+    requestArrayOrEmpty('/api/v1/crops', { token }),
+  ])
+
+  const region = pick(payload.farmland_region, payload.residence_region, farmProfile?.region, farm?.location)
+  const formattedFarmSize = formatCultivationArea(payload.cultivation_area)
+  const farmSize = pick(formattedFarmSize, farmProfile?.farmSize, farm?.cultivationArea)
+  const cropNames = [payload.primary_crop_name, ...(payload.secondary_crop_names || [])].filter(Boolean)
+  const matchedCrops = cropNames
+    .map((cropName) => findCropByName(cropList, cropName))
+    .filter(Boolean)
+  const currentCropIds = new Set((userCrops || []).map((item) => item.cropId))
+  const primaryCrop = findCropByName(cropList, payload.primary_crop_name) || matchedCrops[0] || null
+  const mainCropId = primaryCrop?.id || farmProfile?.mainCropId || matchedCrops[0]?.id || null
+
+  if (region || farmSize || mainCropId) {
+    await saveFarmProfile(token, {
+      region,
+      experienceLevel: farmProfile?.experienceLevel || 'BEGINNER',
+      farmSize,
+      mainCropId,
+    })
+  }
+
+  if (region || farmSize) {
+    await saveFarm(token, {
+      name: farm?.name || (region ? `${region} 농장` : '나의 농장'),
+      location: region,
+      cultivationArea: farmSize,
+      notes: farm?.notes || '',
+    })
+  }
+
+  for (const crop of matchedCrops) {
+    if (currentCropIds.has(crop.id)) {
+      continue
+    }
+
+    await apiRequest('/api/v1/user-crops', {
+      method: 'POST',
+      token,
+      body: {
+        cropId: crop.id,
+        cultivationArea: farmSize,
+        memo: '정책 온보딩에서 자동 반영',
+      },
+    })
+  }
+
+  return {
+    synced: true,
+    region,
+    farmSize,
+    mainCropId,
+    cropCount: matchedCrops.length,
+  }
 }

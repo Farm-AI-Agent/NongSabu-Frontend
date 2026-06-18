@@ -29,14 +29,57 @@ const sortOptions = [
   { value: 'sourceAsc', label: '출처 가나다순' },
 ]
 
+function compareText(a, b) {
+  return String(a || '').localeCompare(String(b || ''), 'ko')
+}
+
+function isMissingDeadline(program) {
+  return !Number.isFinite(program.deadlineValue) || program.deadlineValue === Number.MAX_SAFE_INTEGER
+}
+
+function compareDeadlineAsc(a, b) {
+  const now = Date.now()
+  const aMissing = isMissingDeadline(a)
+  const bMissing = isMissingDeadline(b)
+  const aPast = !aMissing && a.deadlineValue < now
+  const bPast = !bMissing && b.deadlineValue < now
+
+  if (aPast !== bPast) {
+    return aPast ? 1 : -1
+  }
+
+  if (aMissing !== bMissing) {
+    return aMissing ? 1 : -1
+  }
+
+  const dateCompare = a.deadlineValue - b.deadlineValue
+  if (dateCompare !== 0) {
+    return dateCompare
+  }
+
+  return compareText(a.name, b.name)
+}
+
+function compareAmount(a, b, direction) {
+  const amountCompare = direction === 'desc'
+    ? b.amountValue - a.amountValue
+    : a.amountValue - b.amountValue
+
+  if (amountCompare !== 0) {
+    return amountCompare
+  }
+
+  return compareDeadlineAsc(a, b)
+}
+
 const categories = computed(() => [
   '전체',
-  ...new Set(supportPrograms.value.map((program) => program.category).filter(Boolean)),
+  ...[...new Set(supportPrograms.value.map((program) => program.category).filter(Boolean))].sort(compareText),
 ])
 
 const crops = computed(() => [
   '전체',
-  ...new Set(supportPrograms.value.map((program) => program.crop).filter(Boolean)),
+  ...[...new Set(supportPrograms.value.map((program) => program.crop).filter(Boolean))].sort(compareText),
 ])
 
 const filteredPrograms = computed(() => {
@@ -56,14 +99,14 @@ const filteredPrograms = computed(() => {
   return [...filtered].sort((a, b) => {
     switch (sortMode.value) {
       case 'amountDesc':
-        return b.amountValue - a.amountValue
+        return compareAmount(a, b, 'desc')
       case 'amountAsc':
-        return a.amountValue - b.amountValue
+        return compareAmount(a, b, 'asc')
       case 'sourceAsc':
-        return a.sourceSite.localeCompare(b.sourceSite, 'ko')
+        return compareText(a.sourceSite, b.sourceSite) || compareDeadlineAsc(a, b)
       case 'deadlineAsc':
       default:
-        return a.deadlineValue - b.deadlineValue
+        return compareDeadlineAsc(a, b)
     }
   })
 })

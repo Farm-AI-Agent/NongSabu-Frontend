@@ -12,6 +12,8 @@ const briefingEndpointCandidates = [
   configuredBriefingPath,
   '/api/v1/farm-briefings/weather',
   '/api/v1/weather/farm-briefing',
+  '/api/v1/weather-farm-briefings',
+  '/api/v1/briefings/weather-farm',
 ].filter((path, index, self) => path && self.indexOf(path) === index)
 
 const { accessToken } = useAuth()
@@ -27,6 +29,7 @@ const farmProfile = ref(null)
 const currentWeather = ref(null)
 const briefing = ref(null)
 const loadedRegion = ref('')
+const weatherErrorMessage = ref('')
 
 const regionLabel = computed(() => loadedRegion.value || (hasFarmLocation.value ? farmLocation.value : '지역 미설정'))
 const cropLabel = computed(() => {
@@ -44,6 +47,19 @@ const weatherLabel = computed(() => {
 
   return `${currentWeather.value.temperature}°C · ${currentWeather.value.condition}`
 })
+const weatherEmoji = computed(() => {
+  const icon = currentWeather.value?.icon
+
+  return {
+    sun: '☀️',
+    'sun-cloud': '🌤️',
+    cloud: '☁️',
+    fog: '🌫️',
+    rain: '🌧️',
+    storm: '⛈️',
+    snow: '🌨️',
+  }[icon] || '🌱'
+})
 
 function resolveErrorMessage(error, fallback) {
   return error instanceof ApiError ? error.message : fallback
@@ -57,6 +73,15 @@ async function requestOrNull(path, options) {
       return null
     }
     throw error
+  }
+}
+
+async function requestArrayOrEmpty(path, options) {
+  try {
+    return (await requestOrNull(path, options)) || []
+  } catch (error) {
+    console.warn(`${path} 목록을 불러오지 못했습니다.`, error)
+    return []
   }
 }
 
@@ -88,10 +113,28 @@ function normalizeBriefing(data) {
   const source = data?.briefing || data?.farmBriefing || data || {}
 
   return {
-    summary: source.summary || source.overview || source.message || '현재 날씨와 농장 정보를 바탕으로 브리핑을 준비했습니다.',
-    actions: normalizeList(source.actions || source.actionItems || source.recommendedActions || source.todos),
-    warnings: normalizeList(source.warnings || source.alerts || source.risks || source.cautions),
+    summary: source.summary || source.overview || source.message || source.result || '현재 날씨와 농장 정보를 바탕으로 브리핑을 준비했습니다.',
+    actions: normalizeList(source.actions || source.actionItems || source.recommendedActions || source.todos || source.tasks),
+    warnings: normalizeList(source.warnings || source.alerts || source.risks || source.cautions || source.notices),
     generatedAt: source.generatedAt || source.createdAt || source.updatedAt || '',
+  }
+}
+
+function buildLocalBriefing() {
+  const cropNames = selectedCrops.value.map((crop) => crop.name)
+  const weatherText = currentWeather.value
+    ? `${currentWeather.value.condition}, ${currentWeather.value.temperature}°C`
+    : '날씨 정보 확인 전'
+  const cropText = cropNames.length ? cropNames.join(', ') : '등록 작물'
+
+  return {
+    summary: `${loadedRegion.value}의 ${weatherText} 기준으로 ${cropText} 관리 일정을 점검하세요.`,
+    actions: [
+      '작물 상태와 토양 수분을 먼저 확인하세요.',
+      '오늘 처리할 방제, 관수, 환기 작업을 우선순위로 정리하세요.',
+    ],
+    warnings: weatherErrorMessage.value ? [weatherErrorMessage.value] : [],
+    generatedAt: new Date().toLocaleString('ko-KR'),
   }
 }
 
@@ -133,7 +176,7 @@ async function requestBriefing(payload) {
     } catch (error) {
       lastError = error
 
-      if (!(error instanceof ApiError) || error.status !== 404) {
+      if (!(error instanceof ApiError) || ![404, 405, 500].includes(error.status)) {
         throw error
       }
     }
@@ -154,8 +197,8 @@ async function loadFarmContext() {
   const [loadedFarm, loadedFarmProfile, userCrops, cropList] = await Promise.all([
     requestOrNull('/api/v1/farms/me', { token: accessToken.value }),
     requestOrNull('/api/v1/farm-profiles/me', { token: accessToken.value }),
-    apiRequest('/api/v1/user-crops/me', { token: accessToken.value }),
-    apiRequest('/api/v1/crops', { token: accessToken.value }),
+    requestArrayOrEmpty('/api/v1/user-crops/me', { token: accessToken.value }),
+    requestArrayOrEmpty('/api/v1/crops', { token: accessToken.value }),
   ])
 
   farm.value = loadedFarm
@@ -192,10 +235,28 @@ async function loadBriefing({ forceRefresh = false, reloadContext = true } = {})
     return
   }
 
-  currentWeather.value = await fetchCurrentWeather(loadedRegion.value)
+  weatherErrorMessage.value = ''
+
+  try {
+    currentWeather.value = await fetchCurrentWeather(loadedRegion.value)
+  } catch (error) {
+    currentWeather.value = null
+    weatherErrorMessage.value = error?.message || '날씨 정보를 불러오지 못했습니다.'
+  }
+
   const payload = buildBriefingPayload(forceRefresh)
-  const data = await requestBriefing(payload)
-  briefing.value = normalizeBriefing(data)
+
+  try {
+    const data = await requestBriefing(payload)
+    briefing.value = normalizeBriefing(data)
+  } catch (error) {
+    if (error instanceof ApiError && [404, 405, 500].includes(error.status)) {
+      briefing.value = buildLocalBriefing()
+      return
+    }
+
+    throw error
+  }
 }
 
 async function loadInitialBriefing() {
@@ -322,7 +383,10 @@ watch(farmLocation, (nextLocation, previousLocation) => {
         </div>
         <div>
           <div class="text-[11px] text-gray-500 mb-1">현재 날씨</div>
-          <div class="text-sm font-semibold text-gray-900">{{ weatherLabel }}</div>
+          <div class="flex items-center gap-2 text-sm font-semibold text-gray-900">
+            <span class="text-xl leading-none">{{ weatherEmoji }}</span>
+            <span>{{ weatherLabel }}</span>
+          </div>
         </div>
         <div>
           <div class="text-[11px] text-gray-500 mb-1">자동 반영 작물</div>
@@ -353,39 +417,31 @@ watch(farmLocation, (nextLocation, previousLocation) => {
           {{ errorMessage }}
         </div>
 
-        <div class="grid gap-4 lg:grid-cols-[1.1fr_1fr]">
-          <div class="rounded-lg border border-gray-200 bg-white p-5">
-            <div class="text-xs font-semibold text-gray-500 mb-2">SUMMARY</div>
-            <p class="text-[17px] leading-7 font-semibold text-gray-900">
-              {{ briefing?.summary || '브리핑 결과를 기다리는 중입니다.' }}
-            </p>
-            <div v-if="briefing?.generatedAt" class="mt-4 text-xs text-gray-400">
-              갱신: {{ briefing.generatedAt }}
-            </div>
+        <div v-if="briefing?.generatedAt" class="mb-3 text-xs text-gray-400">
+          갱신: {{ briefing.generatedAt }}
+        </div>
+
+        <div class="grid gap-4 md:grid-cols-2">
+          <div class="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+            <div class="text-xs font-bold text-emerald-800 mb-3">오늘 하면 좋은 일</div>
+            <ul v-if="briefing?.actions?.length" class="space-y-2">
+              <li v-for="action in briefing.actions" :key="action" class="flex gap-2 text-sm text-emerald-950">
+                <span class="mt-1 h-1.5 w-1.5 rounded-full bg-emerald-600 flex-shrink-0"></span>
+                <span>{{ action }}</span>
+              </li>
+            </ul>
+            <div v-else class="text-sm text-emerald-900">지금 바로 챙길 작업이 생기면 여기에 알려드릴게요.</div>
           </div>
 
-          <div class="grid gap-4">
-            <div class="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
-              <div class="text-xs font-bold text-emerald-800 mb-3">ACTIONS</div>
-              <ul v-if="briefing?.actions?.length" class="space-y-2">
-                <li v-for="action in briefing.actions" :key="action" class="flex gap-2 text-sm text-emerald-950">
-                  <span class="mt-1 h-1.5 w-1.5 rounded-full bg-emerald-600 flex-shrink-0"></span>
-                  <span>{{ action }}</span>
-                </li>
-              </ul>
-              <div v-else class="text-sm text-emerald-900">지금 바로 필요한 작업이 있으면 이곳에 표시됩니다.</div>
-            </div>
-
-            <div class="rounded-lg border border-rose-200 bg-rose-50 p-4">
-              <div class="text-xs font-bold text-rose-800 mb-3">WARNINGS</div>
-              <ul v-if="briefing?.warnings?.length" class="space-y-2">
-                <li v-for="warning in briefing.warnings" :key="warning" class="flex gap-2 text-sm text-rose-950">
-                  <span class="mt-1 h-1.5 w-1.5 rounded-full bg-rose-600 flex-shrink-0"></span>
-                  <span>{{ warning }}</span>
-                </li>
-              </ul>
-              <div v-else class="text-sm text-rose-900">특별한 경고가 없으면 이 영역은 비어 있습니다.</div>
-            </div>
+          <div class="rounded-lg border border-rose-200 bg-rose-50 p-4">
+            <div class="text-xs font-bold text-rose-800 mb-3">주의할 점</div>
+            <ul v-if="briefing?.warnings?.length" class="space-y-2">
+              <li v-for="warning in briefing.warnings" :key="warning" class="flex gap-2 text-sm text-rose-950">
+                <span class="mt-1 h-1.5 w-1.5 rounded-full bg-rose-600 flex-shrink-0"></span>
+                <span>{{ warning }}</span>
+              </li>
+            </ul>
+            <div v-else class="text-sm text-rose-900">특별히 주의할 사항은 없어요. 지금처럼만 차분히 관리해 주세요.</div>
           </div>
         </div>
       </div>

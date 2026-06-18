@@ -643,7 +643,7 @@ onMounted(() => {
               <div class="space-y-4">
                 <div class="border-l-4 border-brand pl-4">
                   <h4 class="font-medium text-gray-900 mb-1">Q: 분석 결과는 얼마나 신뢰할 수 있나요?</h4>
-                  <p class="text-sm text-gray-600">A: 현재 분석 모델은 더미 모델 단계입니다. 화면과 API 흐름은 실제 모델 연동을 기준으로 구성되어 있으며, 최종 진단 정확도는 모델 교체 후 다시 안내됩니다.</p>
+                  <p class="text-sm text-gray-600">A: 업로드한 이미지는 실제 분석 모델 API로 전달되며, 화면은 백엔드에서 내려온 진단 결과와 안내 메시지를 기준으로 표시됩니다.</p>
                 </div>
                 <div class="border-l-4 border-brand pl-4">
                   <h4 class="font-medium text-gray-900 mb-1">Q: 지원하는 작물은 무엇인가요?</h4>
