@@ -60,6 +60,7 @@ const selectedCropId = ref(null)
 const submitting = ref(false)
 const submitError = ref('')
 const analysisResult = ref(null)
+const activeDiseaseInfoTab = ref('info')
 
 const currentStep = computed(() => {
   if (analysisResult.value) {
@@ -109,18 +110,61 @@ const analysisMessage = computed(() => {
   return formatAnalysisText(analysisResult.value?.message, '분석 결과를 확인했습니다.')
 })
 
-const summaryText = computed(() => {
-  return formatAnalysisText(
-    analysisResult.value?.summary || analysisResult.value?.description,
-    '요약 정보가 응답에 포함되지 않았습니다.',
-  )
+const detectionPalette = [
+  '#dc3f5f',
+  '#2f7d3c',
+  '#e09b2d',
+  '#2563eb',
+  '#7c3aed',
+]
+
+const normalizedDetections = computed(() => {
+  const detections = asArray(analysisResult.value?.detections)
+  const imageSize = analysisResult.value?.imageSize || analysisResult.value?.image_size || {}
+  const imageWidth = Number(imageSize.width)
+  const imageHeight = Number(imageSize.height)
+
+  return detections
+    .map((detection, index) => normalizeDetection(detection, index, imageWidth, imageHeight))
+    .filter(Boolean)
 })
 
-const recommendationText = computed(() => {
-  return formatAnalysisText(
-    analysisResult.value?.recommendation || analysisResult.value?.action,
-    '권장 조치 정보가 응답에 포함되면 이 영역에 표시됩니다.',
-  )
+const detectionCountText = computed(() => {
+  const count = Number(analysisResult.value?.detectionCount ?? analysisResult.value?.detection_count ?? normalizedDetections.value.length)
+  return `${Number.isFinite(count) ? count : normalizedDetections.value.length}건`
+})
+
+const diseaseInfoTabs = computed(() => {
+  const result = analysisResult.value || {}
+
+  return [
+    {
+      key: 'info',
+      title: '병 정보',
+      fallback: '병에 대한 정보가 응답에 포함되면 이 영역에 표시됩니다.',
+      value: pick(result.diseaseInfo, result.disease_info, result.summary, result.description),
+    },
+    {
+      key: 'cause',
+      title: '발병 원인',
+      fallback: '발병 원인 정보가 응답에 포함되면 이 영역에 표시됩니다.',
+      value: pick(result.cause, result.causes, result.reason, result.infectionCause, result.infection_cause),
+    },
+    {
+      key: 'solution',
+      title: '해결 방안',
+      fallback: '해결 방안 정보가 응답에 포함되면 이 영역에 표시됩니다.',
+      value: pick(result.solution, result.solutions, result.treatment, result.treatmentGuide, result.treatment_guide, result.recommendation),
+    },
+  ].map((section) => ({
+    ...section,
+    text: formatDetailText(section.value, section.fallback),
+    hasValue: Boolean(section.value),
+  }))
+})
+
+const activeDiseaseInfoSection = computed(() => {
+  return diseaseInfoTabs.value.find((section) => section.key === activeDiseaseInfoTab.value) || diseaseInfoTabs.value[0]
 })
 
 const resultBadgeClass = computed(() => {
@@ -169,6 +213,41 @@ function pick(...values) {
   return values.find((value) => value !== undefined && value !== null && value !== '') ?? ''
 }
 
+function firstObject(...values) {
+  return values.find((value) => value && typeof value === 'object' && !Array.isArray(value)) || {}
+}
+
+function formatDetailText(value, fallback) {
+  if (value === undefined || value === null || value === '') {
+    return fallback
+  }
+
+  if (Array.isArray(value)) {
+    const lines = value.map((item) => formatDetailText(item, '')).filter(Boolean)
+    return lines.length ? lines.join('\n') : fallback
+  }
+
+  if (typeof value === 'object') {
+    const directText = pick(value.text, value.content, value.description, value.summary, value.message)
+
+    if (directText) {
+      return formatDetailText(directText, fallback)
+    }
+
+    const lines = Object.entries(value)
+      .map(([key, item]) => {
+        const text = formatDetailText(item, '')
+        return text ? `${key}: ${text}` : ''
+      })
+      .filter(Boolean)
+
+    return lines.length ? lines.join('\n') : fallback
+  }
+
+  const text = String(value).trim()
+  return formatAnalysisText(text, text || fallback)
+}
+
 function normalizeCropList(value) {
   return asArray(value)
     .map((crop, index) => ({
@@ -179,8 +258,145 @@ function normalizeCropList(value) {
     .filter((crop) => crop.id !== undefined && crop.name)
 }
 
+function toPercent(value) {
+  const number = Number(value)
+  if (!Number.isFinite(number)) {
+    return 0
+  }
+
+  const percent = number > 1 ? number : number * 100
+  return Math.max(0, Math.min(100, percent))
+}
+
+function formatConfidence(value) {
+  if (value === undefined || value === null || value === '') {
+    return '-'
+  }
+
+  return `${toPercent(value).toFixed(1)}%`
+}
+
+function normalizeDetection(detection, index, imageWidth, imageHeight) {
+  const box = extractDetectionBox(detection)
+  if (!box) {
+    return null
+  }
+
+  const { x, y, width, height } = box
+  if (![x, y, width, height].every(Number.isFinite)) {
+    return null
+  }
+
+  const isNormalizedBox = Math.max(Math.abs(x), Math.abs(y), Math.abs(width), Math.abs(height)) <= 1
+  const left = isNormalizedBox || !imageWidth ? toPercent(x) : toPercent(x / imageWidth)
+  const top = isNormalizedBox || !imageHeight ? toPercent(y) : toPercent(y / imageHeight)
+  const boxWidth = Math.min(isNormalizedBox || !imageWidth ? toPercent(width) : toPercent(width / imageWidth), 100 - left)
+  const boxHeight = Math.min(isNormalizedBox || !imageHeight ? toPercent(height) : toPercent(height / imageHeight), 100 - top)
+  const color = detectionPalette[index % detectionPalette.length]
+  const confidence = detection.confidencePercent ?? detection.confidence_percent ?? detection.confidence
+  const labelGoesAbove = top >= 8
+
+  return {
+    id: `${detection.className || detection.class_name || detection.label || 'detection'}-${index}`,
+    label: formatAnalysisText(detection.label || detection.className || detection.class_name, '병해충'),
+    confidenceText: formatConfidence(confidence),
+    color,
+    boxStyle: {
+      left: `${left}%`,
+      top: `${top}%`,
+      width: `${boxWidth}%`,
+      height: `${boxHeight}%`,
+      borderColor: color,
+    },
+    labelStyle: {
+      left: `${left}%`,
+      top: `${labelGoesAbove ? top : top + 1}%`,
+      backgroundColor: color,
+      transform: labelGoesAbove ? 'translateY(-100%)' : 'translateY(0)',
+    },
+  }
+}
+
+function extractDetectionBox(detection) {
+  const rawBox = pick(detection?.bbox, detection?.box, detection?.boundingBox, detection?.bounding_box)
+  const format = String(pick(detection?.bboxFormat, detection?.bbox_format, detection?.boxFormat, detection?.box_format)).toLowerCase()
+
+  if (Array.isArray(rawBox) && rawBox.length >= 4) {
+    const [x, y, third, fourth] = rawBox.map(Number)
+    const isCornerBox = format.includes('xyxy') || format.includes('x1y1x2y2')
+
+    return {
+      x,
+      y,
+      width: isCornerBox ? third - x : third,
+      height: isCornerBox ? fourth - y : fourth,
+    }
+  }
+
+  if (rawBox && typeof rawBox === 'object') {
+    const x = Number(pick(rawBox.x, rawBox.left, rawBox.x1, rawBox.xmin, rawBox.minX, rawBox.min_x))
+    const y = Number(pick(rawBox.y, rawBox.top, rawBox.y1, rawBox.ymin, rawBox.minY, rawBox.min_y))
+    const widthValue = pick(rawBox.width, rawBox.w)
+    const heightValue = pick(rawBox.height, rawBox.h)
+    const x2 = pick(rawBox.x2, rawBox.xmax, rawBox.maxX, rawBox.max_x, rawBox.right)
+    const y2 = pick(rawBox.y2, rawBox.ymax, rawBox.maxY, rawBox.max_y, rawBox.bottom)
+
+    return {
+      x,
+      y,
+      width: widthValue !== '' ? Number(widthValue) : Number(x2) - x,
+      height: heightValue !== '' ? Number(heightValue) : Number(y2) - y,
+    }
+  }
+
+  const x = Number(pick(detection?.x, detection?.left, detection?.x1, detection?.xmin, detection?.minX, detection?.min_x))
+  const y = Number(pick(detection?.y, detection?.top, detection?.y1, detection?.ymin, detection?.minY, detection?.min_y))
+  const widthValue = pick(detection?.width, detection?.w)
+  const heightValue = pick(detection?.height, detection?.h)
+  const x2 = pick(detection?.x2, detection?.xmax, detection?.maxX, detection?.max_x, detection?.right)
+  const y2 = pick(detection?.y2, detection?.ymax, detection?.maxY, detection?.max_y, detection?.bottom)
+
+  if ([x, y].some((value) => !Number.isFinite(value))) {
+    return null
+  }
+
+  return {
+    x,
+    y,
+    width: widthValue !== '' ? Number(widthValue) : Number(x2) - x,
+    height: heightValue !== '' ? Number(heightValue) : Number(y2) - y,
+  }
+}
+
 function normalizeAnalysisResult(response) {
   const source = response?.analysisResult || response?.analysis_result || response?.result || response?.prediction || response || {}
+  const ragSource = firstObject(
+    source.ragResult,
+    source.rag_result,
+    source.rag,
+    source.diseaseKnowledge,
+    source.disease_knowledge,
+    source.knowledge,
+    response?.ragResult,
+    response?.rag_result,
+    response?.rag,
+  )
+  const imageProcessingSource = firstObject(
+    source.imageProcessingInfo,
+    source.image_processing_info,
+    source.imageProcessing,
+    source.image_processing,
+    source.detectionResult,
+    source.detection_result,
+    source.visionResult,
+    source.vision_result,
+    response?.imageProcessingInfo,
+    response?.image_processing_info,
+    response?.imageProcessing,
+    response?.image_processing,
+    response?.detectionResult,
+    response?.detection_result,
+  )
 
   return {
     ...response,
@@ -190,9 +406,15 @@ function normalizeAnalysisResult(response) {
     diseaseName: pick(source.diseaseName, source.disease_name, source.diagnosisName, source.diagnosis_name, source.className, source.class_name, source.label, source.prediction),
     confidence: pick(source.confidence, source.confidenceScore, source.confidence_score, source.probability, source.score),
     message: pick(source.message, source.resultMessage, source.result_message, response?.message),
-    summary: pick(source.summary, source.description, source.overview, source.explanation),
-    recommendation: pick(source.recommendation, source.recommendations, source.action, source.treatment, source.treatmentGuide, source.treatment_guide),
+    summary: pick(source.summary, source.description, source.overview, source.explanation, ragSource.summary, ragSource.description, ragSource.overview),
+    recommendation: pick(source.recommendation, source.recommendations, source.action, source.treatment, source.treatmentGuide, source.treatment_guide, ragSource.recommendation, ragSource.recommendations, ragSource.solution, ragSource.solutions, ragSource.treatment, ragSource.treatmentGuide, ragSource.treatment_guide),
     severity: pick(source.severity, response?.severity),
+    detections: asArray(pick(source.detections, source.detectionResults, source.detection_results, source.objects, source.detectedObjects, source.detected_objects, imageProcessingSource.detections, imageProcessingSource.detectionResults, imageProcessingSource.detection_results, imageProcessingSource.objects, imageProcessingSource.boxes, imageProcessingSource.results, response?.detections)),
+    detectionCount: pick(source.detectionCount, source.detection_count, imageProcessingSource.detectionCount, imageProcessingSource.detection_count, response?.detectionCount, response?.detection_count),
+    imageSize: pick(source.imageSize, source.image_size, imageProcessingSource.imageSize, imageProcessingSource.image_size, response?.imageSize, response?.image_size),
+    diseaseInfo: pick(source.diseaseInfo, source.disease_info, source.diseaseDescription, source.disease_description, ragSource.diseaseInfo, ragSource.disease_info, ragSource.diseaseDescription, ragSource.disease_description, ragSource.info, ragSource.description, response?.diseaseInfo, response?.disease_info),
+    cause: pick(source.cause, source.causes, source.reason, source.infectionCause, source.infection_cause, ragSource.cause, ragSource.causes, ragSource.reason, ragSource.infectionCause, ragSource.infection_cause),
+    solution: pick(source.solution, source.solutions, source.treatment, source.treatmentGuide, source.treatment_guide, ragSource.solution, ragSource.solutions, ragSource.treatment, ragSource.treatmentGuide, ragSource.treatment_guide, ragSource.management, ragSource.control),
   }
 }
 
@@ -228,6 +450,7 @@ function resetToUpload() {
   selectedFile.value = null
   selectedCropId.value = null
   analysisResult.value = null
+  activeDiseaseInfoTab.value = 'info'
   submitError.value = ''
 }
 
@@ -285,6 +508,7 @@ async function requestDiagnosis() {
       token: accessToken.value,
     })
     analysisResult.value = normalizeAnalysisResult(response)
+    activeDiseaseInfoTab.value = 'info'
   } catch (error) {
     submitError.value = resolveErrorMessage(error, '이미지 분석 요청에 실패했습니다.')
   } finally {
@@ -514,14 +738,61 @@ onBeforeUnmount(() => {
           <span class="text-sm text-gray-500">{{ selectedCropName }}</span>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-8 mb-8">
-          <div>
-            <img
-              :src="previewUrl"
-              alt="분석한 이미지"
-              class="w-full rounded-lg object-cover border border-gray-200"
-              style="aspect-ratio: 4/3"
-            />
+        <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)] gap-8 mb-8">
+          <div class="space-y-4">
+            <div class="relative overflow-hidden rounded-lg border border-gray-200 bg-slate-100">
+              <img
+                :src="previewUrl"
+                alt="분석한 이미지"
+                class="block w-full h-auto"
+              />
+
+              <template v-for="detection in normalizedDetections" :key="detection.id">
+                <div
+                  class="absolute border-2 pointer-events-none"
+                  :style="detection.boxStyle"
+                ></div>
+                <div
+                  class="absolute z-10 rounded-t px-2 py-1 text-[12px] font-bold text-white shadow-sm pointer-events-none"
+                  :style="detection.labelStyle"
+                >
+                  {{ detection.label }} {{ detection.confidenceText }}
+                </div>
+              </template>
+            </div>
+
+            <div class="rounded-xl border border-gray-200 bg-white p-4">
+              <div class="mb-4 grid grid-cols-3 gap-2">
+                <button
+                  v-for="section in diseaseInfoTabs"
+                  :key="section.key"
+                  class="min-h-10 rounded-lg border px-3 text-sm font-semibold transition-colors"
+                  :class="
+                    activeDiseaseInfoTab === section.key
+                      ? 'border-brand bg-brand text-white'
+                      : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                  "
+                  @click="activeDiseaseInfoTab = section.key"
+                >
+                  {{ section.title }}
+                </button>
+              </div>
+
+              <div class="rounded-lg bg-slate-50 p-4">
+                <div class="mb-2 flex items-center justify-between gap-3">
+                  <div class="text-sm font-bold text-gray-900">{{ activeDiseaseInfoSection.title }}</div>
+                  <span
+                    v-if="!activeDiseaseInfoSection.hasValue"
+                    class="rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-gray-500"
+                  >
+                    응답 대기
+                  </span>
+                </div>
+                <div class="whitespace-pre-line text-sm leading-relaxed text-gray-700">
+                  {{ activeDiseaseInfoSection.text }}
+                </div>
+              </div>
+            </div>
           </div>
 
           <div class="space-y-4">
@@ -543,17 +814,24 @@ onBeforeUnmount(() => {
               </div>
             </div>
 
-            <div class="rounded-xl border border-gray-200 p-5">
-              <div class="text-xs text-gray-500 mb-2">요약</div>
-              <div class="text-sm text-gray-800 leading-relaxed">
-                {{ summaryText }}
+            <div class="rounded-xl border border-gray-200 bg-white p-4">
+              <div class="mb-3 flex items-center justify-between">
+                <div class="text-sm font-bold text-gray-900">감지 결과</div>
+                <div class="text-xs text-gray-500">{{ detectionCountText }}</div>
               </div>
-            </div>
-
-            <div class="rounded-xl border border-gray-200 p-5">
-              <div class="text-xs text-gray-500 mb-2">권장 조치</div>
-              <div class="text-sm text-gray-800 leading-relaxed">
-                {{ recommendationText }}
+              <div v-if="normalizedDetections.length" class="space-y-2">
+                <div
+                  v-for="detection in normalizedDetections"
+                  :key="`${detection.id}-row`"
+                  class="grid grid-cols-[28px_1fr_auto] items-center gap-3 rounded-md border border-gray-100 bg-gray-50 pr-3 text-sm"
+                >
+                  <div class="h-9 rounded-l-md" :style="{ backgroundColor: detection.color }"></div>
+                  <div class="font-medium text-gray-800">{{ detection.label }}</div>
+                  <div class="font-semibold text-gray-900">{{ detection.confidenceText }}</div>
+                </div>
+              </div>
+              <div v-else class="rounded-md bg-gray-50 px-4 py-3 text-sm text-gray-500">
+                탐지된 병반 영역이 없습니다.
               </div>
             </div>
           </div>
