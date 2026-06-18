@@ -1,132 +1,70 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import AppHeader from '../components/AppHeader.vue'
 import Sidebar from '../components/Sidebar.vue'
 import FloatingChatButton from '../components/FloatingChatButton.vue'
 import AppFooter from '../components/AppFooter.vue'
 import { useAuth } from '../composables/useAuth'
+import { ApiError } from '../lib/api'
+import { fetchPolicyPrograms } from '../lib/policyApi'
 
-const { userName } = useAuth()
+const { accessToken } = useAuth()
 
-// 더미 데이터
-const supportPrograms = ref([
-  {
-    id: 1,
-    name: '스마트팜 기술 지원사업',
-    category: '시설·기계',
-    crop: '토마토',
-    subsidy: '5,000만원',
-    deadline: '2025년 6월 30일',
-    description: '스마트팜 도입을 위한 시설 및 기술 지원',
-    requirements: [
-      '농업경영체 등록 필수',
-      '최근 3년 이상 영농 경력',
-      '경영 규모 500㎡ 이상'
-    ],
-    benefits: [
-      '센서 및 제어 시스템 지원',
-      '설치 비용 90% 지원',
-      '3년간 기술 지원'
-    ],
-    contact: '도농업기술원 스마트팜팀',
-    liked: false
-  },
-  {
-    id: 2,
-    name: '친환경 농산물 인증 지원',
-    category: '인증',
-    crop: '딸기',
-    subsidy: '200만원',
-    deadline: '2025년 7월 15일',
-    description: '친환경 농산물 인증 취득을 위한 비용 지원',
-    requirements: [
-      '영농 경력 1년 이상',
-      '친환경 인증 신청 완료'
-    ],
-    benefits: [
-      '인증 검사료 50% 지원',
-      '컨설팅 무료 제공'
-    ],
-    contact: '시 농산물품질관리사',
-    liked: false
-  },
-  {
-    id: 3,
-    name: '병해충 방제 장비 구입비',
-    category: '기계',
-    crop: '오이',
-    subsidy: '800만원',
-    deadline: '2025년 8월 31일',
-    description: '병해충 방제 전문 장비 구입 지원사업',
-    requirements: [
-      '영농 경력 2년 이상',
-      '재배 규모 200㎡ 이상'
-    ],
-    benefits: [
-      '방제 장비 구입비 80% 지원',
-      '기술 교육 무료 제공'
-    ],
-    contact: '도농업기술원',
-    liked: false
-  },
-  {
-    id: 4,
-    name: '농촌 진흥청 신품종 시범사업',
-    category: '교육·연구',
-    crop: '토마토',
-    subsidy: '3,000만원',
-    deadline: '2025년 6월 15일',
-    description: '신품종 채소 도입 및 재배 기술 교육',
-    requirements: [
-      '영농 경력 3년 이상',
-      '시범 사업 참여 의사'
-    ],
-    benefits: [
-      '종자 및 기술료 전액 지원',
-      '정기적인 기술 지원',
-      '판로 연결 지원'
-    ],
-    contact: '도농업기술원 채소연구팀',
-    liked: false
-  },
-  {
-    id: 5,
-    name: '농업용수 절감 시설 지원',
-    category: '시설·기계',
-    crop: '딸기',
-    subsidy: '4,000만원',
-    deadline: '2025년 7월 31일',
-    description: '점적 관개 등 절수 시설 설치 지원',
-    requirements: [
-      '시설 규모 300㎡ 이상',
-      '영농 경력 1년 이상'
-    ],
-    benefits: [
-      '설치 비용 85% 지원',
-      '수도료 절감 효과 (연 30% 이상)',
-      '유지관리 기술 지원'
-    ],
-    contact: '도 농정국',
-    liked: false
-  }
-])
+const supportPrograms = ref([])
+const isLoading = ref(false)
+const errorMessage = ref('')
+const apiEndpoint = ref('')
 
 const searchQuery = ref('')
 const selectedCategory = ref('전체')
 const selectedCrop = ref('전체')
+const sortMode = ref('deadlineAsc')
 const selectedProgram = ref(null)
 const showModal = ref(false)
 
-const categories = ['전체', '시설·기계', '인증', '교육·연구']
-const crops = ['전체', '토마토', '딸기', '오이']
+const sortOptions = [
+  { value: 'deadlineAsc', label: '마감일 빠른순' },
+  { value: 'amountDesc', label: '금액 높은순' },
+  { value: 'amountAsc', label: '금액 낮은순' },
+  { value: 'sourceAsc', label: '출처 가나다순' },
+]
+
+const categories = computed(() => [
+  '전체',
+  ...new Set(supportPrograms.value.map((program) => program.category).filter(Boolean)),
+])
+
+const crops = computed(() => [
+  '전체',
+  ...new Set(supportPrograms.value.map((program) => program.crop).filter(Boolean)),
+])
 
 const filteredPrograms = computed(() => {
-  return supportPrograms.value.filter(program => {
-    const matchSearch = program.name.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-                       program.description.toLowerCase().includes(searchQuery.value.toLowerCase())
+  const keyword = searchQuery.value.trim().toLowerCase()
+  const filtered = supportPrograms.value.filter((program) => {
+    const haystack = [program.name, program.description, program.sourceSite, program.category, program.crop]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+    const matchSearch = !keyword || haystack.includes(keyword)
     const matchCategory = selectedCategory.value === '전체' || program.category === selectedCategory.value
     const matchCrop = selectedCrop.value === '전체' || program.crop === selectedCrop.value
+
     return matchSearch && matchCategory && matchCrop
+  })
+
+  return [...filtered].sort((a, b) => {
+    switch (sortMode.value) {
+      case 'amountDesc':
+        return b.amountValue - a.amountValue
+      case 'amountAsc':
+        return a.amountValue - b.amountValue
+      case 'sourceAsc':
+        return a.sourceSite.localeCompare(b.sourceSite, 'ko')
+      case 'deadlineAsc':
+      default:
+        return a.deadlineValue - b.deadlineValue
+    }
   })
 })
 
@@ -142,11 +80,33 @@ function saveFavorites(list) {
   localStorage.setItem('fd_fav_programs', JSON.stringify(list))
 }
 
-// initialize liked flags from storage
-const savedFavs = loadFavorites()
-supportPrograms.value.forEach(p => {
-  p.liked = savedFavs.some(f => f.id === p.id)
-})
+function applyFavorites(programs) {
+  const savedFavs = loadFavorites()
+  return programs.map((program) => ({
+    ...program,
+    liked: savedFavs.some((favorite) => favorite.id === program.id),
+  }))
+}
+
+function resolveErrorMessage(error) {
+  return error instanceof ApiError ? error.message : '지원사업 정보를 불러오지 못했습니다.'
+}
+
+async function loadPolicyPrograms() {
+  isLoading.value = true
+  errorMessage.value = ''
+
+  try {
+    const result = await fetchPolicyPrograms(accessToken.value)
+    apiEndpoint.value = result.endpoint
+    supportPrograms.value = applyFavorites(result.programs)
+  } catch (error) {
+    supportPrograms.value = []
+    errorMessage.value = resolveErrorMessage(error)
+  } finally {
+    isLoading.value = false
+  }
+}
 
 function toggleLike(program) {
   program.liked = !program.liked
@@ -169,6 +129,10 @@ function closeModal() {
   showModal.value = false
   selectedProgram.value = null
 }
+
+onMounted(() => {
+  loadPolicyPrograms()
+})
 </script>
 
 <template>
@@ -181,17 +145,35 @@ function closeModal() {
       <!-- Header -->
       <div class="mb-6 border-b border-gray-200 pb-5">
         <div class="text-gray-400 text-[13px] mb-1.5">지원사업 정보</div>
-        <div class="text-[26px] font-bold text-gray-900 tracking-tight">맞춤형 정부 지원사업</div>
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div class="text-[26px] font-bold text-gray-900 tracking-tight">맞춤형 정부 지원사업</div>
+          <router-link
+            to="/policy-onboarding"
+            class="inline-flex items-center justify-center px-4 py-2 bg-brand text-white rounded-lg text-sm font-medium no-underline"
+          >
+            추천 조건 입력
+          </router-link>
+        </div>
+        <div v-if="apiEndpoint" class="text-xs text-gray-400 mt-2">
+          연결된 정책 API: {{ apiEndpoint }}
+        </div>
       </div>
 
-      <!-- Search bar -->
-      <div class="mb-5">
+      <div class="mb-5 grid grid-cols-1 lg:grid-cols-[1fr_220px] gap-3">
         <input
           v-model="searchQuery"
           type="text"
           placeholder="지원사업명이나 설명으로 검색..."
           class="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand"
         />
+        <select
+          v-model="sortMode"
+          class="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+        >
+          <option v-for="option in sortOptions" :key="option.value" :value="option.value">
+            {{ option.label }}
+          </option>
+        </select>
       </div>
 
       <!-- Filters -->
@@ -235,45 +217,65 @@ function closeModal() {
 
       <!-- Programs list -->
       <div class="space-y-4 mb-8">
-        <div v-if="filteredPrograms.length === 0" class="text-center py-12">
+        <div v-if="isLoading" class="bg-white border border-gray-200 rounded-xl p-10 text-center text-sm text-gray-500">
+          정책 지원사업을 불러오는 중입니다...
+        </div>
+
+        <div v-else-if="errorMessage" class="bg-rose-50 border border-rose-100 rounded-xl p-5">
+          <div class="text-sm font-semibold text-rose-700">정책 API 연결을 확인해주세요.</div>
+          <div class="text-sm text-rose-600 mt-1">{{ errorMessage }}</div>
+          <button
+            class="mt-4 px-4 py-2 bg-white border border-rose-200 text-rose-700 rounded-lg text-sm font-medium"
+            @click="loadPolicyPrograms"
+          >
+            다시 불러오기
+          </button>
+        </div>
+
+        <div v-else-if="filteredPrograms.length === 0" class="text-center py-12">
           <div class="text-gray-400 text-sm">검색 결과가 없습니다.</div>
         </div>
 
-        <div
-          v-for="program in filteredPrograms"
-          :key="program.id"
-          class="bg-white border border-gray-200 rounded-xl p-5 hover:shadow-md transition-shadow cursor-pointer"
-        >
-          <div class="flex items-start justify-between gap-4">
-            <div class="flex-1 min-w-0" @click="openDetail(program)">
-              <div class="flex items-center gap-2 mb-2">
-                <span class="text-[11px] font-medium px-2.5 py-1 bg-brand-light text-brand rounded-full">
-                  {{ program.category }}
-                </span>
-                <span class="text-[11px] font-medium px-2.5 py-1 bg-gray-100 text-gray-600 rounded-full">
-                  {{ program.crop }}
-                </span>
+        <template v-else>
+          <div
+            v-for="program in filteredPrograms"
+            :key="program.id"
+            class="bg-white border border-gray-200 rounded-xl p-5 hover:shadow-md transition-shadow cursor-pointer"
+          >
+            <div class="flex items-start justify-between gap-4">
+              <div class="flex-1 min-w-0" @click="openDetail(program)">
+                <div class="flex items-center gap-2 mb-2">
+                  <span class="text-[11px] font-medium px-2.5 py-1 bg-brand-light text-brand rounded-full">
+                    {{ program.category }}
+                  </span>
+                  <span class="text-[11px] font-medium px-2.5 py-1 bg-gray-100 text-gray-600 rounded-full">
+                    {{ program.crop }}
+                  </span>
+                  <span class="text-[11px] font-medium px-2.5 py-1 bg-gray-100 text-gray-600 rounded-full">
+                    {{ program.sourceSite }}
+                  </span>
+                </div>
+                <div class="text-[15px] font-bold text-gray-900 mb-1 truncate">
+                  {{ program.name }}
+                </div>
+                <div class="text-sm text-gray-600 mb-3 line-clamp-2">
+                  {{ program.description }}
+                </div>
+                <div class="flex gap-4 text-sm">
+                  <div class="text-brand font-bold">{{ program.subsidy }}</div>
+                  <div class="text-gray-500">마감: {{ program.deadline }}</div>
+                </div>
               </div>
-              <div class="text-[15px] font-bold text-gray-900 mb-1 truncate">
-                {{ program.name }}
-              </div>
-              <div class="text-sm text-gray-600 mb-3 line-clamp-2">
-                {{ program.description }}
-              </div>
-              <div class="flex gap-4 text-sm">
-                <div class="text-brand font-bold">{{ program.subsidy }}</div>
-                <div class="text-gray-500">마감: {{ program.deadline }}</div>
-              </div>
+              <button
+                @click.stop="toggleLike(program)"
+                class="flex-shrink-0 text-2xl transition-transform"
+                :class="program.liked ? 'text-red-500' : 'text-gray-300 hover:text-gray-400'"
+              >
+                {{ program.liked ? '❤️' : '🤍' }}
+              </button>
             </div>
-            <button
-              @click.stop="toggleLike(program)"
-              class="flex-shrink-0 text-2xl transition-transform"
-              :class="program.liked ? 'text-red-500' : 'text-gray-300 hover:text-gray-400'"
-            >
-              {{ program.liked ? '❤️' : '🤍' }}
-            </button>
           </div>
-        </div>
+        </template>
       </div>
 
       <AppFooter />
@@ -311,6 +313,9 @@ function closeModal() {
                   <span class="text-xs font-medium px-2.5 py-1 bg-gray-100 text-gray-600 rounded-full">
                     {{ selectedProgram.crop }}
                   </span>
+                  <span class="text-xs font-medium px-2.5 py-1 bg-gray-100 text-gray-600 rounded-full">
+                    {{ selectedProgram.sourceSite }}
+                  </span>
                 </div>
               </div>
               <button
@@ -334,6 +339,10 @@ function closeModal() {
                 <div class="text-xs text-gray-600 mb-1">신청 마감일</div>
                 <div class="text-lg font-bold text-brand">{{ selectedProgram.deadline }}</div>
               </div>
+              <div>
+                <div class="text-xs text-gray-600 mb-1">불러온 출처</div>
+                <div class="text-lg font-bold text-brand">{{ selectedProgram.sourceSite }}</div>
+              </div>
             </div>
           </div>
 
@@ -351,12 +360,13 @@ function closeModal() {
               <div class="w-1 h-4 bg-brand rounded-sm"></div>
               신청 자격
             </div>
-            <ul class="space-y-2">
+            <ul v-if="selectedProgram.requirements.length" class="space-y-2">
               <li v-for="(req, i) in selectedProgram.requirements" :key="i" class="flex gap-2 text-sm text-gray-600">
                 <span class="flex-shrink-0 text-brand">•</span>
                 <span>{{ req }}</span>
               </li>
             </ul>
+            <div v-else class="text-sm text-gray-500">신청 자격 정보가 아직 제공되지 않았습니다.</div>
           </div>
 
           <!-- Benefits -->
@@ -365,12 +375,13 @@ function closeModal() {
               <div class="w-1 h-4 bg-brand rounded-sm"></div>
               지원 내용
             </div>
-            <ul class="space-y-2">
+            <ul v-if="selectedProgram.benefits.length" class="space-y-2">
               <li v-for="(benefit, i) in selectedProgram.benefits" :key="i" class="flex gap-2 text-sm text-gray-600">
                 <span class="flex-shrink-0 text-brand">•</span>
                 <span>{{ benefit }}</span>
               </li>
             </ul>
+            <div v-else class="text-sm text-gray-500">지원 내용 상세가 아직 제공되지 않았습니다.</div>
           </div>
 
           <!-- Contact -->
@@ -380,9 +391,15 @@ function closeModal() {
           </div>
 
           <!-- Action button -->
-          <button class="w-full py-3.5 bg-brand text-white rounded-lg text-sm font-bold mb-3 hover:bg-opacity-90 transition-colors">
+          <a
+            v-if="selectedProgram.applicationUrl"
+            :href="selectedProgram.applicationUrl"
+            target="_blank"
+            rel="noreferrer"
+            class="block text-center w-full py-3.5 bg-brand text-white rounded-lg text-sm font-bold mb-3 hover:bg-opacity-90 transition-colors no-underline"
+          >
             신청하기
-          </button>
+          </a>
           <button
             @click="closeModal"
             class="w-full py-3.5 bg-gray-100 text-gray-900 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors"

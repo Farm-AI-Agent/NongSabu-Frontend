@@ -7,6 +7,7 @@ import Chat from '../views/Chat.vue'
 import SupportPrograms from '../views/SupportPrograms.vue'
 import FavoritePrograms from '../views/FavoritePrograms.vue'
 import DiagnosisHistory from '../views/DiagnosisHistory.vue'
+import PolicyOnboarding from '../views/PolicyOnboarding.vue'
 import { useAuth } from '../composables/useAuth'
 
 const routes = [
@@ -15,6 +16,7 @@ const routes = [
   { path: '/support-programs', name: 'support-programs', component: SupportPrograms, meta: { requiresAuth: true } },
   { path: '/favorites', name: 'favorites', component: FavoritePrograms, meta: { requiresAuth: true } },
   { path: '/diagnosis-history', name: 'diagnosis-history', component: DiagnosisHistory, meta: { requiresAuth: true } },
+  { path: '/policy-onboarding', name: 'policy-onboarding', component: PolicyOnboarding, meta: { requiresAuth: true } },
   { path: '/mypage', name: 'mypage', component: MyPage, meta: { requiresAuth: true } },
   { path: '/login', name: 'login', component: Login, meta: { guestOnly: true } },
   { path: '/chat', name: 'chat', component: Chat, meta: { requiresAuth: true } },
