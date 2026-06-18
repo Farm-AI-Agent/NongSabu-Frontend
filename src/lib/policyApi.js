@@ -1,11 +1,9 @@
 import { ApiError, apiRequest } from './api'
 
 const POLICY_PROGRAM_ENDPOINTS = [
-  '/api/v1/policies/recommendations',
-  '/api/v1/policy/recommendations',
-  '/api/v1/policies',
-  '/api/v1/policy-programs',
-  '/api/v1/support-programs',
+  '/api/v1/support-programs?size=100',
+  '/api/v1/policy-programs?size=100',
+  '/api/v1/policies?size=100',
 ]
 
 const POLICY_ONBOARDING_ENDPOINTS = [
@@ -232,7 +230,17 @@ async function saveFarm(token, payload) {
 
 export function normalizePolicyProgram(program, index = 0) {
   const sourceSite = pick(program.sourceSite, program.source_site, program.source, program.site, program.organization)
-  const deadline = pick(program.deadline, program.deadlineDate, program.deadline_date, program.endDate, program.end_date)
+  const deadline = pick(
+    program.deadline,
+    program.deadlineDate,
+    program.deadline_date,
+    program.applicationPeriod,
+    program.application_period,
+    program.applyDeadline,
+    program.apply_deadline,
+    program.endDate,
+    program.end_date,
+  )
   const subsidy = toMoneyText(program)
 
   return {
@@ -245,13 +253,13 @@ export function normalizePolicyProgram(program, index = 0) {
     deadline: deadline || '마감일 정보 없음',
     deadlineValue: parseDateValue(deadline),
     sourceSite: sourceSite || '출처 미확인',
-    description: pick(program.description, program.summary, program.content, program.overview, '상세 설명이 없습니다.'),
-    requirements: normalizeList(pick(program.requirements, program.eligibility, program.condition, program.conditions)),
-    benefits: normalizeList(pick(program.benefits, program.supportDetails, program.support_details, program.details)),
+    description: pick(program.description, program.summary, program.content, program.overview, program.targetGroup, program.target_group, '상세 설명이 없습니다.'),
+    requirements: normalizeList(pick(program.requirements, program.eligibility, program.condition, program.conditions, program.targetGroup, program.target_group)),
+    benefits: normalizeList(pick(program.benefits, program.supportDetails, program.support_details, program.details, program.applyMethod, program.apply_method)),
     recommendationReason: pick(program.recommendationReason, program.recommendation_reason, program.matchReason, program.match_reason, program.reason),
     matchedCriteria: normalizeList(pick(program.matchedCriteria, program.matched_criteria, program.matchingFactors, program.matching_factors, program.matchedReasons)),
     contact: pick(program.contact, program.contactInfo, program.contact_info, program.department, '문의처 정보 없음'),
-    applicationUrl: pick(program.applicationUrl, program.application_url, program.url, program.sourceUrl, program.source_url),
+    applicationUrl: pick(program.applicationUrl, program.application_url, program.url, program.sourceUrl, program.source_url, program.detailUrl, program.detail_url),
     original: program,
     sortIndex: index,
     liked: false,

@@ -61,8 +61,14 @@ const submitting = ref(false)
 const submitError = ref('')
 const analysisResult = ref(null)
 const activeDiseaseInfoTab = ref('info')
+const reportLoading = ref(false)
+const reportError = ref('')
 
 const currentStep = computed(() => {
+  if (submitting.value) {
+    return 'analyzing'
+  }
+
   if (analysisResult.value) {
     return 'result'
   }
@@ -141,19 +147,19 @@ const diseaseInfoTabs = computed(() => {
     {
       key: 'info',
       title: '병 정보',
-      fallback: '병에 대한 정보가 응답에 포함되면 이 영역에 표시됩니다.',
+      fallback: reportLoading.value ? '병 설명 리포트를 불러오는 중입니다...' : '병 정보가 아직 준비되지 않았습니다.',
       value: pick(result.diseaseInfo, result.disease_info, result.summary, result.description),
     },
     {
       key: 'cause',
       title: '발병 원인',
-      fallback: '발병 원인 정보가 응답에 포함되면 이 영역에 표시됩니다.',
-      value: pick(result.cause, result.causes, result.reason, result.infectionCause, result.infection_cause),
+      fallback: reportLoading.value ? '병 설명 리포트를 불러오는 중입니다...' : '발병 원인 정보가 아직 준비되지 않았습니다.',
+      value: pick(result.outbreakCause, result.outbreak_cause, result.cause, result.causes, result.reason, result.infectionCause, result.infection_cause),
     },
     {
       key: 'solution',
       title: '해결 방안',
-      fallback: '해결 방안 정보가 응답에 포함되면 이 영역에 표시됩니다.',
+      fallback: reportLoading.value ? '병 설명 리포트를 불러오는 중입니다...' : '해결 방안 정보가 아직 준비되지 않았습니다.',
       value: pick(result.solution, result.solutions, result.treatment, result.treatmentGuide, result.treatment_guide, result.recommendation),
     },
   ].map((section) => ({
@@ -215,6 +221,17 @@ function pick(...values) {
 
 function firstObject(...values) {
   return values.find((value) => value && typeof value === 'object' && !Array.isArray(value)) || {}
+}
+
+function mergeDefined(...objects) {
+  return objects.reduce((merged, object) => {
+    Object.entries(object || {}).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        merged[key] = value
+      }
+    })
+    return merged
+  }, {})
 }
 
 function formatDetailText(value, fallback) {
@@ -401,6 +418,7 @@ function normalizeAnalysisResult(response) {
   return {
     ...response,
     ...source,
+    imageId: pick(source.imageId, source.image_id, source.analysisImageId, source.analysis_image_id, source.id, response?.imageId, response?.image_id, response?.analysisImageId, response?.analysis_image_id),
     status: pick(source.status, response?.status, 'COMPLETED'),
     cropName: pick(source.cropName, source.crop_name, response?.cropName, selectedCropName.value),
     diseaseName: pick(source.diseaseName, source.disease_name, source.diagnosisName, source.diagnosis_name, source.className, source.class_name, source.label, source.prediction),
@@ -413,8 +431,47 @@ function normalizeAnalysisResult(response) {
     detectionCount: pick(source.detectionCount, source.detection_count, imageProcessingSource.detectionCount, imageProcessingSource.detection_count, response?.detectionCount, response?.detection_count),
     imageSize: pick(source.imageSize, source.image_size, imageProcessingSource.imageSize, imageProcessingSource.image_size, response?.imageSize, response?.image_size),
     diseaseInfo: pick(source.diseaseInfo, source.disease_info, source.diseaseDescription, source.disease_description, ragSource.diseaseInfo, ragSource.disease_info, ragSource.diseaseDescription, ragSource.disease_description, ragSource.info, ragSource.description, response?.diseaseInfo, response?.disease_info),
-    cause: pick(source.cause, source.causes, source.reason, source.infectionCause, source.infection_cause, ragSource.cause, ragSource.causes, ragSource.reason, ragSource.infectionCause, ragSource.infection_cause),
+    cause: pick(source.outbreakCause, source.outbreak_cause, source.cause, source.causes, source.reason, source.infectionCause, source.infection_cause, ragSource.outbreakCause, ragSource.outbreak_cause, ragSource.cause, ragSource.causes, ragSource.reason, ragSource.infectionCause, ragSource.infection_cause),
     solution: pick(source.solution, source.solutions, source.treatment, source.treatmentGuide, source.treatment_guide, ragSource.solution, ragSource.solutions, ragSource.treatment, ragSource.treatmentGuide, ragSource.treatment_guide, ragSource.management, ragSource.control),
+  }
+}
+
+function normalizeImageReport(report) {
+  const source = report?.report || report || {}
+  const guidance = firstObject(source.diseaseGuidance, source.disease_guidance)
+
+  return {
+    reportText: pick(source.reportText, source.report_text),
+    ragContext: pick(guidance.ragContext, guidance.rag_context, source.ragContext, source.rag_context),
+    diseaseName: pick(guidance.diseaseName, guidance.disease_name, source.diseaseName, source.disease_name),
+    diseaseInfo: pick(guidance.diseaseInfo, guidance.disease_info),
+    outbreakCause: pick(guidance.outbreakCause, guidance.outbreak_cause),
+    cause: pick(guidance.outbreakCause, guidance.outbreak_cause),
+    treatment: pick(guidance.treatment, guidance.treatmentGuide, guidance.treatment_guide),
+    solution: pick(guidance.treatment, guidance.treatmentGuide, guidance.treatment_guide),
+    diseaseGuidance: guidance,
+  }
+}
+
+async function loadImageReport(imageId) {
+  if (!imageId) {
+    reportError.value = '리포트를 불러오기 위한 imageId가 응답에 없습니다.'
+    return
+  }
+
+  reportLoading.value = true
+  reportError.value = ''
+
+  try {
+    const report = await apiRequest(`/api/v1/reports/images/${imageId}`, {
+      method: 'POST',
+      token: accessToken.value,
+    })
+    analysisResult.value = mergeDefined(analysisResult.value, normalizeImageReport(report))
+  } catch (error) {
+    reportError.value = resolveErrorMessage(error, '병 설명 리포트를 불러오지 못했습니다.')
+  } finally {
+    reportLoading.value = false
   }
 }
 
@@ -451,6 +508,8 @@ function resetToUpload() {
   selectedCropId.value = null
   analysisResult.value = null
   activeDiseaseInfoTab.value = 'info'
+  reportLoading.value = false
+  reportError.value = ''
   submitError.value = ''
 }
 
@@ -496,6 +555,7 @@ async function requestDiagnosis() {
 
   submitting.value = true
   submitError.value = ''
+  reportError.value = ''
 
   const formData = new FormData()
   formData.append('cropId', String(selectedCropId.value))
@@ -509,6 +569,7 @@ async function requestDiagnosis() {
     })
     analysisResult.value = normalizeAnalysisResult(response)
     activeDiseaseInfoTab.value = 'info'
+    await loadImageReport(analysisResult.value.imageId)
   } catch (error) {
     submitError.value = resolveErrorMessage(error, '이미지 분석 요청에 실패했습니다.')
   } finally {
@@ -728,6 +789,66 @@ onBeforeUnmount(() => {
       <AppFooter />
     </div>
 
+    <div v-else-if="currentStep === 'analyzing'" class="px-5 py-7 mx-auto ml-64 pt-20 min-h-screen flex flex-col">
+      <div class="bg-white border border-gray-200 rounded-[10px] p-8">
+        <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_420px] gap-8 items-center">
+          <div>
+            <div class="relative overflow-hidden rounded-lg border border-gray-200 bg-slate-100">
+              <img
+                :src="previewUrl"
+                alt="분석 중인 이미지"
+                class="block w-full object-cover opacity-80"
+                style="aspect-ratio: 4/3"
+              />
+              <div class="absolute inset-0 bg-white/45"></div>
+              <div class="absolute inset-0 flex items-center justify-center">
+                <div class="h-14 w-14 rounded-full border-4 border-white border-t-brand animate-spin"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="space-y-6">
+            <div>
+              <div class="text-sm font-semibold text-brand mb-2">AI 이미지 진단 진행 중</div>
+              <h2 class="text-2xl font-bold text-gray-900 tracking-tight">
+                병반 위치와 질병 정보를 분석하고 있습니다
+              </h2>
+              <p class="mt-3 text-sm leading-relaxed text-gray-600">
+                이미지 분석 결과를 받은 뒤, 리포트 API에서 병 정보와 발병 원인, 해결 방안을 이어서 불러옵니다.
+              </p>
+            </div>
+
+            <div class="rounded-xl border border-gray-200 p-5">
+              <div class="mb-3 flex items-center justify-between text-sm">
+                <span class="font-semibold text-gray-900">분석 대상</span>
+                <span class="text-gray-500">{{ selectedCropName || '작물 확인 중' }}</span>
+              </div>
+              <div class="h-2 overflow-hidden rounded-full bg-slate-100">
+                <div class="h-full w-1/2 rounded-full bg-brand animate-pulse"></div>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 gap-3 text-sm">
+              <div class="flex items-center gap-3 rounded-lg bg-slate-50 px-4 py-3">
+                <span class="h-2.5 w-2.5 rounded-full bg-brand"></span>
+                <span class="text-gray-700">이미지 분석 요청 처리 중</span>
+              </div>
+              <div class="flex items-center gap-3 rounded-lg bg-slate-50 px-4 py-3">
+                <span class="h-2.5 w-2.5 rounded-full bg-brand"></span>
+                <span class="text-gray-700">감지 박스와 신뢰도 계산 중</span>
+              </div>
+              <div class="flex items-center gap-3 rounded-lg bg-slate-50 px-4 py-3">
+                <span class="h-2.5 w-2.5 rounded-full" :class="reportLoading ? 'bg-brand' : 'bg-slate-300'"></span>
+                <span class="text-gray-700">병 설명 리포트 불러오는 중</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <AppFooter />
+    </div>
+
     <div v-else class="px-5 py-7 mx-auto ml-64 pt-20 min-h-screen flex flex-col">
       <div class="bg-white border border-gray-200 rounded-[10px] p-8">
         <div class="flex flex-wrap items-center gap-3 mb-6">
@@ -791,6 +912,7 @@ onBeforeUnmount(() => {
                 <div class="whitespace-pre-line text-sm leading-relaxed text-gray-700">
                   {{ activeDiseaseInfoSection.text }}
                 </div>
+                <p v-if="reportError" class="mt-3 text-xs text-red-600">{{ reportError }}</p>
               </div>
             </div>
           </div>

@@ -14,10 +14,11 @@ const supportPrograms = ref([])
 const isLoading = ref(false)
 const errorMessage = ref('')
 const apiEndpoint = ref('')
+const ALL_FILTER = '전체'
 
 const searchQuery = ref('')
-const selectedCategory = ref('전체')
-const selectedCrop = ref('전체')
+const selectedCategory = ref(ALL_FILTER)
+const selectedCrop = ref(ALL_FILTER)
 const sortMode = ref('deadlineAsc')
 const selectedProgram = ref(null)
 const showModal = ref(false)
@@ -33,8 +34,30 @@ function compareText(a, b) {
   return String(a || '').localeCompare(String(b || ''), 'ko')
 }
 
+function buildFilterOptions(values) {
+  const seen = new Set()
+  const options = values
+    .map((value) => String(value || '').trim())
+    .filter((value) => value && value !== ALL_FILTER)
+    .filter((value) => {
+      if (seen.has(value)) {
+        return false
+      }
+
+      seen.add(value)
+      return true
+    })
+    .sort(compareText)
+
+  return [ALL_FILTER, ...options]
+}
+
 function isMissingDeadline(program) {
   return !Number.isFinite(program.deadlineValue) || program.deadlineValue === Number.MAX_SAFE_INTEGER
+}
+
+function isMissingAmount(program) {
+  return !Number.isFinite(program.amountValue) || program.amountValue <= 0
 }
 
 function compareDeadlineAsc(a, b) {
@@ -61,6 +84,13 @@ function compareDeadlineAsc(a, b) {
 }
 
 function compareAmount(a, b, direction) {
+  const aMissing = isMissingAmount(a)
+  const bMissing = isMissingAmount(b)
+
+  if (aMissing !== bMissing) {
+    return aMissing ? 1 : -1
+  }
+
   const amountCompare = direction === 'desc'
     ? b.amountValue - a.amountValue
     : a.amountValue - b.amountValue
@@ -72,15 +102,9 @@ function compareAmount(a, b, direction) {
   return compareDeadlineAsc(a, b)
 }
 
-const categories = computed(() => [
-  '전체',
-  ...[...new Set(supportPrograms.value.map((program) => program.category).filter(Boolean))].sort(compareText),
-])
+const categories = computed(() => buildFilterOptions(supportPrograms.value.map((program) => program.category)))
 
-const crops = computed(() => [
-  '전체',
-  ...[...new Set(supportPrograms.value.map((program) => program.crop).filter(Boolean))].sort(compareText),
-])
+const crops = computed(() => buildFilterOptions(supportPrograms.value.map((program) => program.crop)))
 
 const filteredPrograms = computed(() => {
   const keyword = searchQuery.value.trim().toLowerCase()
@@ -90,8 +114,8 @@ const filteredPrograms = computed(() => {
       .join(' ')
       .toLowerCase()
     const matchSearch = !keyword || haystack.includes(keyword)
-    const matchCategory = selectedCategory.value === '전체' || program.category === selectedCategory.value
-    const matchCrop = selectedCrop.value === '전체' || program.crop === selectedCrop.value
+    const matchCategory = selectedCategory.value === ALL_FILTER || program.category === selectedCategory.value
+    const matchCrop = selectedCrop.value === ALL_FILTER || program.crop === selectedCrop.value
 
     return matchSearch && matchCategory && matchCrop
   })

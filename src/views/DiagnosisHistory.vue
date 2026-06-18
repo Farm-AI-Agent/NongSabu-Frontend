@@ -55,6 +55,95 @@ function displayAnalysisText(value, fallback) {
   return formatAnalysisText(value, fallback)
 }
 
+function pick(...values) {
+  return values.find((value) => value !== undefined && value !== null && value !== '') ?? ''
+}
+
+function firstObject(...values) {
+  return values.find((value) => value && typeof value === 'object' && !Array.isArray(value)) || {}
+}
+
+function mergeDefined(...objects) {
+  return objects.reduce((merged, object) => {
+    Object.entries(object || {}).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        merged[key] = value
+      }
+    })
+    return merged
+  }, {})
+}
+
+function formatDetailText(value, fallback) {
+  if (value === undefined || value === null || value === '') {
+    return fallback
+  }
+
+  if (Array.isArray(value)) {
+    const lines = value.map((item) => formatDetailText(item, '')).filter(Boolean)
+    return lines.length ? lines.join('\n') : fallback
+  }
+
+  if (typeof value === 'object') {
+    const directText = pick(value.text, value.content, value.description, value.summary, value.message)
+
+    if (directText) {
+      return formatDetailText(directText, fallback)
+    }
+
+    const lines = Object.entries(value)
+      .map(([key, item]) => {
+        const text = formatDetailText(item, '')
+        return text ? `${key}: ${text}` : ''
+      })
+      .filter(Boolean)
+
+    return lines.length ? lines.join('\n') : fallback
+  }
+
+  const text = String(value).trim()
+  return formatAnalysisText(text, text || fallback)
+}
+
+function normalizeImageReport(report) {
+  const source = report?.report || report || {}
+  const guidance = firstObject(source.diseaseGuidance, source.disease_guidance)
+
+  return {
+    reportText: pick(source.reportText, source.report_text),
+    ragContext: pick(guidance.ragContext, guidance.rag_context, source.ragContext, source.rag_context),
+    diseaseName: pick(guidance.diseaseName, guidance.disease_name, source.diseaseName, source.disease_name),
+    diseaseInfo: pick(guidance.diseaseInfo, guidance.disease_info),
+    outbreakCause: pick(guidance.outbreakCause, guidance.outbreak_cause),
+    treatment: pick(guidance.treatment, guidance.treatmentGuide, guidance.treatment_guide),
+    recommendation: pick(guidance.treatment, guidance.treatmentGuide, guidance.treatment_guide),
+    diseaseGuidance: guidance,
+  }
+}
+
+function diseaseGuidanceSections(record) {
+  return [
+    {
+      title: '병 정보',
+      value: pick(record?.diseaseInfo, record?.disease_info, record?.summary),
+      fallback: '병 정보가 아직 준비되지 않았습니다.',
+    },
+    {
+      title: '발병 원인',
+      value: pick(record?.outbreakCause, record?.outbreak_cause, record?.cause, record?.reason),
+      fallback: '발병 원인 정보가 아직 준비되지 않았습니다.',
+    },
+    {
+      title: '해결 방안',
+      value: pick(record?.treatment, record?.solution, record?.recommendation),
+      fallback: '해결 방안 정보가 아직 준비되지 않았습니다.',
+    },
+  ].map((section) => ({
+    ...section,
+    text: formatDetailText(section.value, section.fallback),
+  }))
+}
+
 async function loadHistory() {
   loading.value = true
   errorMessage.value = ''
@@ -79,9 +168,33 @@ async function openDetail(record) {
   selected.value = record
 
   try {
-    selected.value = await apiRequest(`/api/v1/analysis/images/${record.imageId}`, {
+    const imageId = pick(record.imageId, record.image_id, record.id)
+    if (!imageId) {
+      detailError.value = '리포트를 불러오기 위한 imageId가 없습니다.'
+      return
+    }
+
+    const detailRequest = apiRequest(`/api/v1/analysis/images/${imageId}`, {
       token: accessToken.value,
     })
+    const reportRequest = apiRequest(`/api/v1/reports/images/${imageId}`, {
+      method: 'POST',
+      token: accessToken.value,
+    })
+    const [detailResult, reportResult] = await Promise.allSettled([detailRequest, reportRequest])
+
+    if (detailResult.status === 'fulfilled') {
+      selected.value = detailResult.value
+    } else {
+      detailError.value = resolveErrorMessage(detailResult.reason, '상세 결과를 불러오지 못했습니다.')
+    }
+
+    if (reportResult.status === 'fulfilled') {
+      selected.value = mergeDefined(selected.value, normalizeImageReport(reportResult.value))
+    } else {
+      const message = resolveErrorMessage(reportResult.reason, '병 설명 리포트를 불러오지 못했습니다.')
+      detailError.value = detailError.value ? `${detailError.value} ${message}` : message
+    }
   } catch (error) {
     detailError.value = resolveErrorMessage(error, '상세 결과를 불러오지 못했습니다.')
   } finally {
@@ -203,17 +316,14 @@ onMounted(() => {
               </div>
             </div>
 
-            <div class="rounded-xl border border-gray-200 p-5">
-              <div class="text-xs text-gray-500 mb-2">요약</div>
-              <div class="text-sm text-gray-800 leading-relaxed">
-                {{ displayAnalysisText(selected.summary, '저장된 분석 결과가 없습니다.') }}
-              </div>
-            </div>
-
-            <div class="rounded-xl border border-gray-200 p-5">
-              <div class="text-xs text-gray-500 mb-2">권장 조치</div>
-              <div class="text-sm text-gray-800 leading-relaxed">
-                {{ displayAnalysisText(selected.recommendation, '권장 조치 정보가 없습니다.') }}
+            <div
+              v-for="section in diseaseGuidanceSections(selected)"
+              :key="section.title"
+              class="rounded-xl border border-gray-200 p-5"
+            >
+              <div class="text-xs text-gray-500 mb-2">{{ section.title }}</div>
+              <div class="whitespace-pre-line text-sm text-gray-800 leading-relaxed">
+                {{ section.text }}
               </div>
             </div>
 

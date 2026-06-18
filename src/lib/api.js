@@ -29,17 +29,31 @@ export async function apiRequest(path, options = {}) {
     requestHeaders.set('Authorization', `Bearer ${token}`)
   }
 
-  const response = await fetch(buildUrl(path), {
-    method,
-    headers: requestHeaders,
-    body: body === undefined ? undefined : isFormData ? body : JSON.stringify(body),
-  })
+  let response
+
+  try {
+    response = await fetch(buildUrl(path), {
+      method,
+      headers: requestHeaders,
+      body: body === undefined ? undefined : isFormData ? body : JSON.stringify(body),
+    })
+  } catch (error) {
+    throw new ApiError(`API 서버에 연결하지 못했습니다. 서버 주소(${API_BASE_URL})와 CORS 허용 포트를 확인해주세요.`, {
+      status: 0,
+      code: 'NETWORK_ERROR',
+      payload: error,
+    })
+  }
 
   const isJson = response.headers.get('content-type')?.includes('application/json')
   const payload = isJson ? await response.json() : null
 
   if (!response.ok || payload?.success === false) {
-    throw new ApiError(payload?.message || '요청 처리에 실패했습니다.', {
+    const fallbackMessage = response.status === 401 || response.status === 403
+      ? '로그인이 만료되었거나 요청 권한이 없습니다. 다시 로그인해주세요.'
+      : '요청 처리에 실패했습니다.'
+
+    throw new ApiError(payload?.message || payload?.error || fallbackMessage, {
       status: response.status,
       code: payload?.code,
       payload,
