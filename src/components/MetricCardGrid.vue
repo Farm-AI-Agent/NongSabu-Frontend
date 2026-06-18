@@ -19,6 +19,23 @@ const weather = ref({
   locationName: '',
 })
 
+const cropEmojiMap = {
+  토마토: '🍅',
+  딸기: '🍓',
+  오이: '🥒',
+  상추: '🥬',
+  배추: '🥬',
+  고추: '🌶️',
+  당근: '🥕',
+  옥수수: '🌽',
+  포도: '🍇',
+  배: '🍐',
+  사과: '🍎',
+  수박: '🍉',
+  멜론: '🍈',
+  양파: '🧅',
+}
+
 const detailedFallbackCoordinates = [
   { keyword: '서울 강남구', latitude: 37.5172, longitude: 127.0473, name: '서울 강남구' },
   { keyword: '서울 강동구', latitude: 37.5301, longitude: 127.1238, name: '서울 강동구' },
@@ -111,7 +128,7 @@ async function searchOpenMeteoLocation(query, originalLocation) {
 
 const metrics = computed(() => {
   const cropNames = selectedCrops.value
-    .map((crop) => crop.name)
+    .map((crop) => `${crop.emoji || ''} ${crop.name}`.trim())
     .filter(Boolean)
     .join(' · ')
 
@@ -136,6 +153,10 @@ function resolveErrorMessage(error, fallback) {
   return error instanceof ApiError ? error.message : fallback
 }
 
+function resolveCropEmoji(cropName) {
+  return cropEmojiMap[cropName] || ''
+}
+
 async function loadSelectedCrops() {
   if (!accessToken.value) {
     selectedCrops.value = []
@@ -154,9 +175,12 @@ async function loadSelectedCrops() {
 
     selectedCrops.value = (userCrops || []).map((item) => {
       const crop = cropsById.get(item.cropId)
+      const name = crop?.name || item.cropName || `작물 #${item.cropId}`
+
       return {
         id: item.cropId,
-        name: crop?.name || item.cropName || `작물 #${item.cropId}`,
+        name,
+        emoji: resolveCropEmoji(name),
       }
     })
   } catch (error) {
