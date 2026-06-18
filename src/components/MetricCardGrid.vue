@@ -19,7 +19,7 @@ const crops = [
   { id: 12, name: '사과', emoji: '🍎' },
   { id: 13, name: '수박', emoji: '🍉' },
   { id: 14, name: '멜론', emoji: '🍈' },
-  { id: 15, name: '파프리카', emoji: '🌶️' },
+  { id: 15, name: '양파', emoji: '🧅' },
 ]
 
 const selectedCrops = ref([])

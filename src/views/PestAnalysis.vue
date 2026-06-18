@@ -10,6 +10,38 @@ import { useAuth } from '../composables/useAuth'
 const router = useRouter()
 const { accessToken } = useAuth()
 
+const cropEmojiMap = {
+  '포도': '🍇',
+  '딸기': '🍓',
+  '토마토': '🍅',
+  '오이': '🥒',
+  '수박': '🍉',
+  '배추': '🥬',
+  '브로콜리': '🥦',
+  '양파': '🧅',
+  '당근': '🥕',
+  '옥수수': '🌽',
+  '배': '🍐',
+  '사과': '🍎',
+  '복숭아': '🍑',
+  '귤': '🍊',
+  '바나나': '🍌',
+  '수수': '🌾',
+  '보리': '🌾',
+  '쌀': '🍚',
+  '무': '⚪',
+  '감자': '🥔',
+  '고구마': '🍠',
+  '올리브': '🫒',
+  '레몬': '🍋',
+  '파': '🌱',
+  '가지': '🍆',
+}
+
+function getCropEmoji(cropName) {
+  return cropEmojiMap[cropName] || '🌱'
+}
+
 const agreed = ref(null)
 const fileInput = ref(null)
 const isDragOver = ref(false)
@@ -330,7 +362,7 @@ onBeforeUnmount(() => {
                 <button
                   v-for="crop in crops"
                   :key="crop.id"
-                  class="text-left p-4 rounded-xl transition-colors border-2"
+                  class="flex flex-col items-center gap-2 p-3 rounded-xl transition-colors border-2"
                   :class="
                     selectedCropId === crop.id
                       ? 'bg-brand/10 border-brand'
@@ -338,8 +370,10 @@ onBeforeUnmount(() => {
                   "
                   @click="selectedCropId = crop.id"
                 >
-                  <div class="text-sm font-semibold text-gray-900">{{ crop.name }}</div>
-                  <div class="text-xs text-gray-500 mt-1">{{ crop.category || '작물' }}</div>
+                  <div class="w-16 h-16 rounded-full bg-gradient-to-br from-yellow-50 to-green-50 flex items-center justify-center text-4xl shadow-sm">
+                    {{ getCropEmoji(crop.name) }}
+                  </div>
+                  <div class="text-sm font-semibold text-gray-900 text-center">{{ crop.name }}</div>
                 </button>
               </div>
 

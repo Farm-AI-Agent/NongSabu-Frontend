@@ -17,6 +17,38 @@ const router = useRouter()
 const { accessToken, fetchMyProfile, logout } = useAuth()
 const { setFarmLocation, clearFarmLocation } = useFarmProfileState()
 
+const cropEmojiMap = {
+  '포도': '🍇',
+  '딸기': '🍓',
+  '토마토': '🍅',
+  '오이': '🥒',
+  '수박': '🍉',
+  '배추': '🥬',
+  '브로콜리': '🥦',
+  '양파': '🧅',
+  '당근': '🥕',
+  '옥수수': '🌽',
+  '배': '🍐',
+  '사과': '🍎',
+  '복숭아': '🍑',
+  '귤': '🍊',
+  '바나나': '🍌',
+  '수수': '🌾',
+  '보리': '🌾',
+  '쌀': '🍚',
+  '무': '⚪',
+  '감자': '🥔',
+  '고구마': '🍠',
+  '올리브': '🫒',
+  '레몬': '🍋',
+  '파': '🌱',
+  '가지': '🍆',
+}
+
+function getCropEmoji(cropName) {
+  return cropEmojiMap[cropName] || '🌱'
+}
+
 const isEditMode = ref(false)
 const isLoading = ref(true)
 const isSaving = ref(false)
@@ -560,6 +592,9 @@ onMounted(() => {
                   class="flex flex-col items-center gap-2 p-3 rounded-xl transition-colors border-2"
                   :class="profile.selectedCropIds.includes(crop.id) ? 'bg-brand/10 border-brand' : 'border-gray-200 hover:border-gray-300'"
                 >
+                  <div class="w-14 h-14 rounded-full bg-gradient-to-br from-yellow-50 to-green-50 flex items-center justify-center text-3xl shadow-sm">
+                    {{ getCropEmoji(crop.name) }}
+                  </div>
                   <div class="text-sm font-semibold text-gray-700 text-center leading-tight">{{ crop.name }}</div>
                   <div
                     v-if="profile.mainCropId === crop.id"
